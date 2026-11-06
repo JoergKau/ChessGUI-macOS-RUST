@@ -368,6 +368,14 @@ impl GameState {
         repeated
     }
 
+    /// `true` when the displayed position has reached the fifty-move rule:
+    /// 100 half-moves without a pawn move or a capture (FIDE Article 9.3).
+    /// Like threefold repetition it is a claim, so the game loop adjudicates
+    /// it for an engine-vs-engine game, where no player can claim.
+    pub fn is_fifty_move_rule(&self) -> bool {
+        self.position().halfmoves() >= 100
+    }
+
     /// `true` iff checkmate, stalemate, or any other terminal condition.
     ///
     /// Threefold repetition is deliberately **not** included: under FIDE
@@ -698,6 +706,9 @@ pub enum Ending {
     /// The player to move claimed a draw because the position occurred three
     /// times (FIDE Article 9.2).
     ThreefoldRepetition,
+    /// The game loop ended the game because 100 half-moves passed without a
+    /// pawn move or a capture (FIDE Article 9.3).
+    FiftyMoveRule,
     /// A tournament adjudicator awarded the game to `winner`.
     AdjudicatedWin {
         /// The side the adjudicator declared the winner.
@@ -736,6 +747,7 @@ impl Ending {
             },
             Ending::DrawAgreed
             | Ending::ThreefoldRepetition
+            | Ending::FiftyMoveRule
             | Ending::AdjudicatedDraw => "1/2-1/2",
         }
     }
@@ -757,6 +769,7 @@ impl Ending {
             Ending::DrawAgreed => "Draw agreed".to_string(),
             Ending::AdjudicatedDraw => "Draw by adjudication".to_string(),
             Ending::ThreefoldRepetition => "Draw by repetition".to_string(),
+            Ending::FiftyMoveRule => "Draw by the fifty-move rule".to_string(),
         }
     }
 }
@@ -1164,6 +1177,7 @@ mod tests {
         assert_eq!(Ending::OnTime { loser: PieceColor::White }.result_token(), "0-1");
         assert_eq!(Ending::DrawAgreed.result_token(), "1/2-1/2");
         assert_eq!(Ending::ThreefoldRepetition.result_token(), "1/2-1/2");
+        assert_eq!(Ending::FiftyMoveRule.result_token(), "1/2-1/2");
         assert_eq!(Ending::AdjudicatedWin { winner: PieceColor::White }.result_token(), "1-0");
         assert_eq!(Ending::AdjudicatedDraw.result_token(), "1/2-1/2");
         assert_eq!(Ending::FromPgn { winner: Some(PieceColor::Black) }.result_token(), "0-1");
@@ -1176,6 +1190,7 @@ mod tests {
         assert_eq!(Ending::FromPgn { winner: None }.description(), "Draw (from PGN)");
         assert_eq!(Ending::DrawAgreed.description(), "Draw agreed");
         assert_eq!(Ending::ThreefoldRepetition.description(), "Draw by repetition");
+        assert_eq!(Ending::FiftyMoveRule.description(), "Draw by the fifty-move rule");
     }
 
     #[test]

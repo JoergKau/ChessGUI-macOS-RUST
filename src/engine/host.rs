@@ -30,6 +30,12 @@ pub struct EngineView {
     pub status: AnalysisStatus,
     /// Statistics of the current search.
     pub stats: EngineStats,
+    /// Turn of the position the current or last search ran on. The score and
+    /// the PV belong to that position — not to the game's current one — so a
+    /// finished engine's card keeps its value while the other engine moves.
+    pub search_white_to_move: bool,
+    /// Move number of that position, for the PV numbering.
+    pub search_fullmove: u32,
 }
 
 /// A running engine plus its analysis state.
@@ -47,6 +53,9 @@ pub struct EngineHost {
     /// Side to move in the last position sent, which decides the clock of a
     /// clock search.
     white_to_move: bool,
+    /// Full-move number of the last position sent, for the PV numbering of a
+    /// frozen card.
+    search_fullmove: u32,
 }
 
 impl EngineHost {
@@ -73,6 +82,7 @@ impl EngineHost {
             watchdog,
             info,
             white_to_move: true,
+            search_fullmove: 1,
         };
         let handshake = host.analysis.handshake();
         host.dispatch(handshake);
@@ -254,6 +264,8 @@ impl EngineHost {
                 .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
             status: self.analysis.status(),
             stats: self.analysis.stats().clone(),
+            search_white_to_move: self.white_to_move,
+            search_fullmove: self.search_fullmove,
         }
     }
 
@@ -285,6 +297,11 @@ impl EngineHost {
             match &command {
                 EngineCommand::SetPosition { fen: Some(fen), .. } => {
                     self.white_to_move = fen.split_whitespace().nth(1) != Some("b");
+                    self.search_fullmove = fen
+                        .split_whitespace()
+                        .nth(5)
+                        .and_then(|number| number.parse::<u32>().ok())
+                        .unwrap_or(1);
                 }
                 EngineCommand::Go(control) => {
                     let limit = self.move_limit(control);
@@ -742,6 +759,35 @@ mod tests {
         let merged = slot.lock().unwrap().clone().expect("the info lines were merged");
         assert_eq!(merged.depth, Some(300), "the latest depth is kept");
         assert_eq!(merged.score, Some(Score::Cp(300)), "the latest score is kept");
+        host.shutdown().terminate().await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_card_score_keeps_the_turn_of_the_searched_position() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_script(
+            dir.path(),
+            "black-score.sh",
+            "while IFS= read -r line; do\n  case \"$line\" in\n    uci) echo 'id name Fake'; echo uciok;;\n    isready) echo readyok;;\n    go*) echo 'info depth 3 score cp 45 pv e7e5';;\n    quit) exit 0;;\n  esac\ndone\n",
+        );
+        let process = EngineProcess::spawn(&path).await.unwrap();
+        let mut host = EngineHost::attach_with_settings(process, BTreeMap::new());
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status == AnalysisStatus::Ready));
+
+        // Black to move on move 5: the engine's `score cp 45` belongs to this
+        // position, so the card must keep Black's turn after the search freezes.
+        let fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 5";
+        host.set_analysis(true, fen, SearchGoal::Analyse);
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.stats.score.is_some()));
+
+        let view = host.view();
+        assert!(!view.search_white_to_move, "the searched position has Black to move");
+        assert_eq!(view.search_fullmove, 5, "the searched position's move number is kept");
+        assert_eq!(
+            crate::gui::eval_panel::white_point_of_view(view.stats.score.unwrap(), view.search_white_to_move),
+            Score::Cp(-45),
+            "Black's +45 is -0.45 from White's point of view"
+        );
         host.shutdown().terminate().await.unwrap();
     }
 }

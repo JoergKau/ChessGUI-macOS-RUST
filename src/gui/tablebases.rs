@@ -20,6 +20,14 @@ use crate::gui::theme;
 /// `setoption name SyzygyPath value …`.
 pub const SYZYGY_PATH: &str = "SyzygyPath";
 
+/// Fixed width of the path field. A width taken from `ui.available_width()`
+/// feeds an auto-size loop: the field widens the window, which widens the
+/// field, until the dialog covers the screen.
+const PATH_FIELD_WIDTH: f32 = 420.0;
+
+/// Minimum width of the dialog, wide enough for the fixed field and buttons.
+const DIALOG_MIN_WIDTH: f32 = 520.0;
+
 /// Separator between tablebase folders in `SyzygyPath`: `;` on Windows,
 /// `:` everywhere else ([UCI spec](https://www.shredderchess.com/chess-features/
 /// chess-software-features/uci-protocol.html), en-croissant `EnginesPage.tsx`).
@@ -92,6 +100,7 @@ impl TablebaseDialog {
         egui::Window::new("Load tablebases")
             .collapsible(false)
             .resizable(false)
+            .min_width(DIALOG_MIN_WIDTH)
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.label(
@@ -147,7 +156,7 @@ fn path_field(ui: &mut Ui, draft: &mut String) -> egui::Response {
         egui::TextEdit::singleline(draft)
             .id(id)
             .font(FontId::monospace(13.0))
-            .desired_width(ui.available_width() - ui.spacing().item_spacing.x - 80.0)
+            .desired_width(PATH_FIELD_WIDTH)
             .hint_text("/path/to/egtb"),
     );
     crate::gui::text_field::after_edit(ui, id, draft, selection, &response);

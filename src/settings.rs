@@ -20,6 +20,11 @@ use crate::tournament::TournamentConfig;
 /// How many previously loaded engine files the pulldowns remember.
 pub const ENGINE_HISTORY_LIMIT: usize = 12;
 
+/// The tablebases switch is on unless a settings file says otherwise.
+fn default_tablebases_in_engines() -> bool {
+    true
+}
+
 /// Everything kept between runs.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -38,6 +43,11 @@ pub struct Settings {
     /// engine at start-up and while it is loaded. `None` when no tablebases
     /// are configured.
     pub tablebase_path: Option<String>,
+    /// Whether the configured tablebases are used at all (Engine →
+    /// Tablebases in engines). On by default, so a settings file from before
+    /// the field keeps using a configured path.
+    #[serde(default = "default_tablebases_in_engines")]
+    pub tablebases_in_engines: bool,
     /// Whether the app writes the session log (`~/Library/Logs/SiliconBoard`). On by
     /// default; Engine → Session log switches it.
     pub session_log: bool,
@@ -97,6 +107,7 @@ impl Default for Settings {
             book_in_games: false,
             book_path: None,
             tablebase_path: None,
+            tablebases_in_engines: true,
             session_log: true,
             engine_options: BTreeMap::new(),
             engines: [None, None],
@@ -384,6 +395,14 @@ mod tests {
         let restored = parse(&to_json(&settings)).unwrap();
         assert_eq!(restored.tablebase_path.as_deref(), Some("/tb/5:/tb/6"));
         assert_eq!(Settings::default().tablebase_path, None, "no tablebases by default");
+        assert!(restored.tablebases_in_engines, "a configured path is used by default");
+
+        let switched_off = Settings {
+            tablebases_in_engines: false,
+            ..settings
+        };
+        let restored = parse(&to_json(&switched_off)).unwrap();
+        assert!(!restored.tablebases_in_engines, "the switch round-trips");
     }
 
     #[test]
@@ -405,6 +424,10 @@ mod tests {
         let settings = parse("{}").unwrap();
         assert_eq!(settings, Settings::default());
         assert!(!settings.book_in_games, "book play is off until a book is loaded");
+        assert!(
+            settings.tablebases_in_engines,
+            "a settings file from before the switch keeps using a configured path"
+        );
     }
 
     #[test]

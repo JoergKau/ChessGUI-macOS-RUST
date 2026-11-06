@@ -54,6 +54,8 @@ pub enum MenuAction {
     LoadEngine(usize),
     /// Engine → Load tablebases…: open the SyzygyPath dialog.
     OpenTablebases,
+    /// Engine → Tablebases in engines: switch the configured path on or off.
+    ToggleTablebases,
     /// An engine card's play/pause toggle (`0` = A, `1` = B).
     ToggleEngine(usize),
     /// Engine → Load PolyGlot book…
@@ -100,6 +102,8 @@ pub struct MenuState<'a> {
     pub book_name: Option<&'a str>,
     /// The `SyzygyPath` string currently given to the engines, if any.
     pub tablebase_path: Option<&'a str>,
+    /// Whether the configured tablebases are used at all.
+    pub tablebases_in_engines: bool,
     /// Board images from `public/images/board/`.
     pub board_themes: &'a [crate::assets::BoardTheme],
     /// File name of the board image in use, if one has been chosen.
@@ -320,6 +324,27 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
                 });
             if tablebases.clicked() {
                 action = Some(MenuAction::OpenTablebases);
+                ui.close();
+            }
+            let tablebases_ready = state.tablebase_path.is_some();
+            let hover = match state.tablebase_path {
+                Some(path) if state.tablebases_in_engines => {
+                    format!("The engines use these tablebases: {}", path)
+                }
+                Some(path) => format!("The engines do not use these tablebases: {}", path),
+                None => "Load tablebases first (Engine menu).".to_string(),
+            };
+            let item = ui.add_enabled(
+                tablebases_ready,
+                egui::Button::selectable(state.tablebases_in_engines, "Tablebases in engines"),
+            );
+            let in_engines = if tablebases_ready {
+                item.on_hover_text(hover)
+            } else {
+                item.on_disabled_hover_text("Load tablebases first (Engine menu).")
+            };
+            if in_engines.clicked() {
+                action = Some(MenuAction::ToggleTablebases);
                 ui.close();
             }
         });

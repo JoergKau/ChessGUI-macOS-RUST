@@ -752,6 +752,7 @@ impl SiliconBoardApp {
         }
         self.report_stalled_engines();
         self.play_engine_moves();
+        self.adjudicate_engine_vs_engine();
         self.finish_draw_offer();
         self.play_book_reply(ctx);
         // A game that ends (or is replaced) switches its engines off, so each
@@ -954,7 +955,7 @@ impl SiliconBoardApp {
                             }
                             self.engines[slot] = Some(EngineHost::attach_with_settings(
                                 process,
-                                engine_startup_settings(&self.engine_settings[slot], &self.settings.tablebase_path),
+                                engine_startup_settings(&self.engine_settings[slot], &self.settings),
                             ));
                             self.engine_auto_restart[slot] = true;
                             self.engine_status[slot] = None;
@@ -1349,6 +1350,7 @@ impl SiliconBoardApp {
             MenuAction::OpenTablebases => {
                 self.tablebase_dialog = Some(TablebaseDialog::new(self.settings.tablebase_path.as_deref()));
             }
+            MenuAction::ToggleTablebases => self.toggle_tablebases(),
             MenuAction::SetBoardTheme(index) => self.set_board_theme(index),
             MenuAction::SetPieceSet(index) => self.set_piece_set(index),
             MenuAction::ToggleFigurinesMoveList => self.toggle_figurines(false),
@@ -2727,15 +2729,46 @@ impl SiliconBoardApp {
         });
     }
 
+    /// Engine → Tablebases in engines: use the configured `SyzygyPath` or
+    /// leave the tablebases out. Switching off clears the loaded engines' path
+    /// at once; switching on sends the saved path again. Engines started
+    /// afterwards see the switch through [`engine_startup_settings`].
+    fn toggle_tablebases(&mut self) {
+        let Some(path) = self.settings.tablebase_path.clone() else {
+            self.set_status(
+                StatusLevel::Warning,
+                "Load tablebases first (Engine menu).".to_string(),
+            );
+            return;
+        };
+        let on = !self.settings.tablebases_in_engines;
+        self.settings.tablebases_in_engines = on;
+        self.save_settings();
+        let sent = if on { path.as_str() } else { "" };
+        for host in self.engines.iter_mut().flatten() {
+            host.set_option(tablebases::SYZYGY_PATH, sent);
+        }
+        let text = if on {
+            format!("Tablebases in engines: on ({}).", path)
+        } else {
+            "Tablebases in engines: off; the engines ignore the configured path.".to_string()
+        };
+        self.set_status(StatusLevel::Info, text);
+    }
+
     /// Apply the `SyzygyPath` string from the Load-tablebases dialog: keep
     /// it in the settings, send it to every loaded engine now, and give it
     /// to every engine started afterwards. An empty string clears the
     /// tablebases again (the engines take an empty path until they are
-    /// restarted, after which they get none).
+    /// restarted, after which they get none). Applying a non-empty path
+    /// switches the tablebases on, because applying means using it.
     fn set_tablebase_path(&mut self, raw: &str) {
         let value = raw.trim().to_string();
         let cleared = value.is_empty();
         self.settings.tablebase_path = (!cleared).then(|| value.clone());
+        if !cleared {
+            self.settings.tablebases_in_engines = true;
+        }
         // The path is one global setting; a stale `SyzygyPath` saved for an
         // engine file must not override it later.
         for saved in self.settings.engine_options.values_mut() {
@@ -2750,7 +2783,11 @@ impl SiliconBoardApp {
             }
         }
         self.save_settings();
-        let sent = if cleared { "" } else { value.as_str() };
+        let sent = if cleared || !self.settings.tablebases_in_engines {
+            ""
+        } else {
+            value.as_str()
+        };
         for host in self.engines.iter_mut().flatten() {
             host.set_option(tablebases::SYZYGY_PATH, sent);
         }
@@ -3198,6 +3235,33 @@ impl SiliconBoardApp {
         let text = format!("You resigned. {}.", self.current_ending().map_or_else(String::new, Ending::description));
         self.set_status(StatusLevel::Info, text);
         self.sync_position(true);
+    }
+
+    /// End an engine-vs-engine game on a draw that no engine can claim: a
+    /// threefold repetition (FIDE 9.2) or the fifty-move rule (9.3). The
+    /// tournament loop has its own threefold check; a play-mode engine game
+    /// has no claimant and would otherwise run forever. The score-based
+    /// tournament adjudicator is deliberately not used here: a cp threshold is
+    /// match policy, not a rule.
+    fn adjudicate_engine_vs_engine(&mut self) {
+        if self.mode != GameMode::EngineVsEngine || !self.live_play() || self.ending.is_some() {
+            return;
+        }
+        if self.game.is_threefold_repetition() {
+            self.ending = Some(Ending::ThreefoldRepetition);
+            log::info!("engine-vs-engine draw adjudicated: threefold repetition");
+            self.set_status(
+                StatusLevel::Info,
+                "Draw by threefold repetition (adjudicated).".to_string(),
+            );
+        } else if self.game.is_fifty_move_rule() {
+            self.ending = Some(Ending::FiftyMoveRule);
+            log::info!("engine-vs-engine draw adjudicated: fifty-move rule");
+            self.set_status(
+                StatusLevel::Info,
+                "Draw by the fifty-move rule (adjudicated).".to_string(),
+            );
+        }
     }
 
     /// The human claims a draw because the displayed position occurred three
@@ -3688,8 +3752,6 @@ impl SiliconBoardApp {
         EvalSummary {
             cards,
             engine_choices: self.engine_choices(),
-            white_to_move: self.game.turn() == PieceColor::White,
-            fullmove: self.game.fullmove_number(),
             outcome: self.result_text().unwrap_or_else(|| self.game.outcome()),
             book_moves: if tournament_active {
                 Vec::new()
@@ -3734,6 +3796,7 @@ impl eframe::App for SiliconBoardApp {
             }),
             book_name: self.book.as_ref().map(|(name, _)| name.as_str()),
             tablebase_path: self.settings.tablebase_path.as_deref(),
+            tablebases_in_engines: self.settings.tablebases_in_engines,
             figurines_move_list: self.settings.figurines_move_list,
             figurines_eval: self.settings.figurines_eval,
             board_themes: &self.board_themes,
@@ -4075,18 +4138,19 @@ fn action_conflicts_with_tournament(action: MenuAction) -> bool {
 
 /// The settings map handed to a freshly attached engine: the slot's own saved
 /// option values, with the global `SyzygyPath` overlaid — inserted when
-/// tablebases are configured and removed when they are cleared, so a stale
-/// value saved for an engine file cannot survive the clearing.
+/// tablebases are configured and switched on, and removed when they are
+/// cleared or switched off, so a stale value saved for an engine file cannot
+/// survive either.
 fn engine_startup_settings(
     saved: &BTreeMap<String, String>,
-    tablebase_path: &Option<String>,
+    settings: &Settings,
 ) -> BTreeMap<String, String> {
     let mut map = saved.clone();
-    match tablebase_path {
-        Some(path) => {
+    match (settings.tablebases_in_engines, settings.tablebase_path.as_ref()) {
+        (true, Some(path)) => {
             map.insert(tablebases::SYZYGY_PATH.to_string(), path.clone());
         }
-        None => {
+        _ => {
             map.remove(tablebases::SYZYGY_PATH);
         }
     }
@@ -4603,6 +4667,81 @@ mod game_flow_tests {
         app.claim_threefold();
         assert_eq!(app.ending, Some(Ending::ThreefoldRepetition));
         assert_eq!(app.result_text().as_deref(), Some("Draw by repetition"));
+    }
+
+    /// An engine-vs-engine game with plenty of material and 100 quiet plies:
+    /// no player can claim the fifty-move draw, so the game loop must.
+    fn fifty_move_fen() -> &'static str {
+        "7k/8/8/8/8/8/R7/R6K w - - 100 80"
+    }
+
+    #[test]
+    fn an_engine_game_ends_on_threefold_repetition() {
+        let mut app = SiliconBoardApp::unloaded(
+            tokio::runtime::Builder::new_current_thread().build().unwrap(),
+            egui::Context::default(),
+        );
+        app.mode = GameMode::EngineVsEngine;
+        app.game_started = true;
+        for _ in 0..2 {
+            for uci in ["g1f3", "g8f6", "f3g1", "f6g8"] {
+                app.game.apply_uci(uci).unwrap();
+            }
+        }
+        assert!(app.game.is_threefold_repetition(), "the knight shuffle repeats the start position");
+
+        app.adjudicate_engine_vs_engine();
+
+        assert_eq!(app.ending, Some(Ending::ThreefoldRepetition));
+        assert!(
+            app.status.contains("threefold repetition"),
+            "status: {}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn an_engine_game_ends_on_the_fifty_move_rule() {
+        let mut app = SiliconBoardApp::unloaded(
+            tokio::runtime::Builder::new_current_thread().build().unwrap(),
+            egui::Context::default(),
+        );
+        app.mode = GameMode::EngineVsEngine;
+        app.game_started = true;
+        app.game = GameState::from_fen(fifty_move_fen()).unwrap();
+        assert!(app.game.is_fifty_move_rule());
+
+        app.adjudicate_engine_vs_engine();
+
+        assert_eq!(app.ending, Some(Ending::FiftyMoveRule));
+        assert!(
+            app.status.contains("fifty-move rule"),
+            "status: {}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn a_human_engine_game_is_not_adjudicated() {
+        let mut app = SiliconBoardApp::unloaded(
+            tokio::runtime::Builder::new_current_thread().build().unwrap(),
+            egui::Context::default(),
+        );
+        app.mode = GameMode::HumanVsEngine {
+            human: PieceColor::White,
+            engine: 0,
+        };
+        app.game_started = true;
+        app.game = GameState::from_fen(fifty_move_fen()).unwrap();
+
+        app.adjudicate_engine_vs_engine();
+
+        assert_eq!(app.ending, None, "the human holds the fifty-move claim");
+        assert!(
+            !app.status.contains("fifty-move"),
+            "nothing is adjudicated for a human game: {}",
+            app.status
+        );
     }
 
     #[test]
@@ -5138,6 +5277,10 @@ mod game_flow_tests {
             Some("/tb/5:/tb/6"),
             "the trimmed string is kept as one global setting"
         );
+        assert!(
+            app.settings.tablebases_in_engines,
+            "applying a path means using it, so the switch turns on"
+        );
         assert_eq!(app.engine_settings[0].get(tablebases::SYZYGY_PATH).map(String::as_str), Some("/tb/5:/tb/6"));
         assert!(
             !app.settings.engine_options["/opt/sf/stockfish"].contains_key(tablebases::SYZYGY_PATH),
@@ -5150,6 +5293,31 @@ mod game_flow_tests {
             !app.engine_settings[0].contains_key(tablebases::SYZYGY_PATH),
             "a cold restart of an engine gets no path again"
         );
+    }
+
+    #[test]
+    fn the_tablebases_switch_keeps_the_path_but_turns_it_on_and_off() {
+        let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let mut app = SiliconBoardApp::unloaded(runtime, egui::Context::default());
+        app.set_tablebase_path("/tb/5:/tb/6");
+        assert!(app.settings.tablebases_in_engines);
+
+        app.toggle_tablebases();
+        assert!(!app.settings.tablebases_in_engines, "the switch turns the tablebases off");
+        assert_eq!(
+            app.settings.tablebase_path.as_deref(),
+            Some("/tb/5:/tb/6"),
+            "switching off keeps the configured path"
+        );
+
+        app.toggle_tablebases();
+        assert!(app.settings.tablebases_in_engines, "the switch turns them on again");
+
+        // Applying a new path after switching off means using it again.
+        app.toggle_tablebases();
+        assert!(!app.settings.tablebases_in_engines);
+        app.set_tablebase_path("/tb/new");
+        assert!(app.settings.tablebases_in_engines, "applying a path switches the tablebases on");
     }
 
     #[test]
@@ -5183,11 +5351,30 @@ mod game_flow_tests {
         saved.insert("Hash".to_string(), "256".to_string());
         saved.insert(tablebases::SYZYGY_PATH.to_string(), "/stale".to_string());
 
-        let with = engine_startup_settings(&saved, &Some("/tb/5:/tb/6".to_string()));
+        let configured = Settings {
+            tablebase_path: Some("/tb/5:/tb/6".to_string()),
+            ..Settings::default()
+        };
+        let with = engine_startup_settings(&saved, &configured);
         assert_eq!(with.get(tablebases::SYZYGY_PATH).map(String::as_str), Some("/tb/5:/tb/6"));
         assert_eq!(with.get("Hash").map(String::as_str), Some("256"), "the engine's own values survive");
 
-        let without = engine_startup_settings(&saved, &None);
+        let switched_off = Settings {
+            tablebases_in_engines: false,
+            ..configured.clone()
+        };
+        let off = engine_startup_settings(&saved, &switched_off);
+        assert!(
+            !off.contains_key(tablebases::SYZYGY_PATH),
+            "a switched-off tablebase path is not handed to a fresh engine"
+        );
+        assert_eq!(off.get("Hash").map(String::as_str), Some("256"));
+
+        let cleared = Settings {
+            tablebase_path: None,
+            ..Settings::default()
+        };
+        let without = engine_startup_settings(&saved, &cleared);
         assert!(
             !without.contains_key(tablebases::SYZYGY_PATH),
             "a cleared tablebase path is not handed to a fresh engine"

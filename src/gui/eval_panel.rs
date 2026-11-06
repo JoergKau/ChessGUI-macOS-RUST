@@ -73,10 +73,6 @@ pub struct EvalSummary {
     /// Engines the cards' pulldowns offer: the loaded A/B files and the files
     /// used last time, as in the tournament window.
     pub engine_choices: Vec<EngineSpec>,
-    /// Side to move in the displayed position (scores are relative to it).
-    pub white_to_move: bool,
-    /// Full-move number of the displayed position.
-    pub fullmove: u32,
     /// Outcome text, e.g. `"Unfinished"` or `"Black wins by checkmate"`.
     pub outcome: String,
     /// Opening-book moves as `(SAN, weight)`, heaviest first.
@@ -107,14 +103,7 @@ pub fn show(ui: &mut Ui, summary: &EvalSummary) -> Option<MenuAction> {
     ui.add_space(6.0);
 
     for card in &summary.cards {
-        if let Some(action) = engine_card(
-            ui,
-            card,
-            &summary.engine_choices,
-            summary.white_to_move,
-            summary.fullmove,
-            summary.figurines,
-        ) {
+        if let Some(action) = engine_card(ui, card, &summary.engine_choices, summary.figurines) {
             requested = Some(action);
         }
         ui.add_space(CARD_GAP);
@@ -146,13 +135,19 @@ fn engine_card(
     ui: &mut Ui,
     card: &EvalCard,
     choices: &[EngineSpec],
-    white_to_move: bool,
-    fullmove: u32,
     figurines: bool,
 ) -> Option<MenuAction> {
     let mut action = None;
     let live = card.is_live();
     let letter = slot_letter(card.slot);
+    // Convert with the turn of the position this engine searched, not the
+    // game's current turn: a frozen card's score belongs to the position one
+    // half-move ago and has the opposite side to move.
+    let (search_white_to_move, search_fullmove) = card
+        .view
+        .as_ref()
+        .map(|view| (view.search_white_to_move, view.search_fullmove))
+        .unwrap_or((true, 1));
     egui::Frame::new()
         .fill(theme::CARD_BG)
         .corner_radius(4.0)
@@ -186,7 +181,7 @@ fn engine_card(
                 engine_choice_combo(ui, card, choices, name_width, &mut action);
                 if let Some(view) = card.view.as_ref().filter(|_| live) {
                     speed_pill(ui, view);
-                    let white_score = view.stats.score.map(|s| white_point_of_view(s, white_to_move));
+                    let white_score = view.stats.score.map(|s| white_point_of_view(s, search_white_to_move));
                     let depth = view
                         .stats
                         .depth
@@ -215,9 +210,9 @@ fn engine_card(
             ui.painter().rect_filled(rule, 1.0, theme::BLUE);
             ui.add_space(6.0);
 
-            let white_score = view.stats.score.map(|s| white_point_of_view(s, white_to_move));
+            let white_score = view.stats.score.map(|s| white_point_of_view(s, search_white_to_move));
             let badge = white_score.map_or_else(|| "--".to_string(), format_score_white);
-            let tokens = number_pv(fullmove, white_to_move, card.pv_san.as_slice());
+            let tokens = number_pv(search_fullmove, search_white_to_move, card.pv_san.as_slice());
             ui.horizontal_top(|ui| {
                 score_badge(ui, &badge);
                 ui.add_space(4.0);
@@ -380,20 +375,49 @@ fn score_badge(ui: &mut Ui, text: &str) {
 /// the text colour. At most [`PV_LINES`] lines are shown; the rest is replaced
 /// by "…", and the full line is available as a tooltip.
 fn pv_flow(ui: &mut Ui, tokens: &[String], figurines: bool) {
+    // Always reserve both PV rows, so a card does not grow from one line to
+    // two (and shove the other card) when a longer PV arrives.
+    let size = Vec2::new(ui.available_width(), PV_LINES as f32 * pv_row_height(ui));
     if tokens.is_empty() {
-        ui.label(RichText::new("PV: --").color(theme::MUTED).small());
+        let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+        let small = ui
+            .style()
+            .text_styles
+            .get(&egui::TextStyle::Small)
+            .cloned()
+            .unwrap_or_else(|| FontId::proportional(12.0));
+        ui.painter().text(rect.left_top(), Align2::LEFT_TOP, "PV: --", small, theme::MUTED);
         return;
     }
     let job = pv_job(ui, tokens, figurines);
     // Paint the laid-out galley directly: `Label` would replace the wrap
     // settings (and with them the two-line limit) with its own.
     let galley = ui.ctx().fonts_mut(|fonts| fonts.layout_job(job));
-    let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
     ui.painter().galley(rect.min, galley, theme::TEXT);
     // Built only when the card is hovered, not on every frame.
     response.on_hover_ui(|ui| {
         ui.label(tokens.join(" "));
     });
+}
+
+/// Height of one PV row, measured from a probe that mixes the two fonts a row
+/// may use (body text and the figurine family), so the fixed reservation for
+/// [`PV_LINES`] also covers the tallest glyph mix.
+fn pv_row_height(ui: &Ui) -> f32 {
+    let body = ui
+        .style()
+        .text_styles
+        .get(&egui::TextStyle::Body)
+        .cloned()
+        .unwrap_or_default();
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap.max_width = f32::INFINITY;
+    crate::gui::figurines::append_san(&mut job, "AgN", &body, theme::TEXT, true);
+    ui.ctx()
+        .fonts_mut(|fonts| fonts.layout_job(job))
+        .size()
+        .y
 }
 
 /// Lay the PV out as one wrapped text job, truncated after [`PV_LINES`] rows.

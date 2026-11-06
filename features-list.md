@@ -16,7 +16,8 @@ the bottom — with a clean dark theme.
 - Opening-book moves in games with any PolyGlot `.bin` book you load, plus a
   suggestions box named after the ECO opening.
 - Resign, draw offers (accepted by the engine within a score margin),
-  threefold-repetition claims, and results written to the PGN.
+  threefold-repetition claims, engine-vs-engine games that end themselves on
+  threefold repetition or the fifty-move rule, and results written to the PGN.
 - Robust engine handling: a file that is not a working UCI engine is
   explained, and an unresponsive engine is restarted automatically.
 
@@ -38,7 +39,8 @@ the bottom — with a clean dark theme.
 - **Syzygy tablebases** via _Engine → Load tablebases…_: pick your
   tablebase folder(s) — 5-men and 6-men sets in separate folders are
   supported — and the path is given to every engine as its `SyzygyPath`
-  option.
+  option. _Engine → Tablebases in engines_ switches the configured path on
+  or off without forgetting it.
 - **Two-engine tournaments** on the main board: time control, alternating
   colours, resign and draw adjudication, optional EPD/PolyGlot opening
   books, and one PGN with every game.
