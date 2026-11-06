@@ -2744,7 +2744,11 @@ impl SiliconBoardApp {
         let on = !self.settings.tablebases_in_engines;
         self.settings.tablebases_in_engines = on;
         self.save_settings();
-        let sent = if on { path.as_str() } else { "" };
+        // `""` is not a reliable clear: PawnForge (and engines with the same
+        // parser) report "Unknown option: SyzygyPath value" and keep their
+        // loaded path. The Stockfish sentinel `<empty>` clears both it and
+        // Stockfish.
+        let sent = if on { path.as_str() } else { tablebases::SYZYGY_EMPTY };
         for host in self.engines.iter_mut().flatten() {
             host.set_option(tablebases::SYZYGY_PATH, sent);
         }
@@ -2784,7 +2788,7 @@ impl SiliconBoardApp {
         }
         self.save_settings();
         let sent = if cleared || !self.settings.tablebases_in_engines {
-            ""
+            tablebases::SYZYGY_EMPTY
         } else {
             value.as_str()
         };
@@ -5318,6 +5322,59 @@ mod game_flow_tests {
         assert!(!app.settings.tablebases_in_engines);
         app.set_tablebase_path("/tb/new");
         assert!(app.settings.tablebases_in_engines, "applying a path switches the tablebases on");
+    }
+
+    #[test]
+    fn switching_the_tablebases_off_sends_the_empty_sentinel() {
+        use std::os::unix::fs::PermissionsExt;
+
+        // A fake engine that records every command it receives. PawnForge
+        // rejects `setoption name SyzygyPath value ` (nothing after `value`)
+        // and keeps the loaded path; the app must send `<empty>` instead.
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("commands.log");
+        let script = dir.path().join("logger.sh");
+        let body = format!(
+            "#!/bin/sh\nlog='{}'\nwhile IFS= read -r line; do\n  printf '%s\\n' \"$line\" >> \"$log\"\n  case \"$line\" in\n    uci) echo 'id name Logger'; echo uciok;;\n    isready) echo readyok;;\n    go*) echo 'bestmove e2e4';;\n    quit) exit 0;;\n  esac\ndone\n",
+            log.display()
+        );
+        std::fs::write(&script, body).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let ctx = egui::Context::default();
+        let mut app = SiliconBoardApp::unloaded(
+            tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap(),
+            ctx.clone(),
+        );
+        let process = app.runtime.block_on(EngineProcess::spawn(&script)).unwrap();
+        app.engines[0] = Some(EngineHost::attach_with_settings(process, BTreeMap::new()));
+        assert!(run_until(&mut app, &ctx, |a| a.engines[0]
+            .as_ref()
+            .is_some_and(|host| host.status() == AnalysisStatus::Ready)));
+
+        app.settings.tablebase_path = Some("/tb/5".into());
+        app.settings.tablebases_in_engines = true;
+        app.toggle_tablebases();
+        assert!(!app.settings.tablebases_in_engines);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let text = std::fs::read_to_string(&log).unwrap_or_default();
+            if text
+                .lines()
+                .any(|line| line == "setoption name SyzygyPath value <empty>")
+            {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the engine never received the clear sentinel; commands:\n{text}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        let process = app.engines[0].as_mut().unwrap().shutdown();
+        app.runtime.block_on(process.terminate()).unwrap();
     }
 
     #[test]

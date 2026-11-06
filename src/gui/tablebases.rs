@@ -20,6 +20,11 @@ use crate::gui::theme;
 /// `setoption name SyzygyPath value …`.
 pub const SYZYGY_PATH: &str = "SyzygyPath";
 
+/// Value that clears `SyzygyPath`. Stockfish-derived engines (Stockfish,
+/// PawnForge, …) accept the literal `<empty>`, while several of them do not
+/// parse a missing value and keep their old path when sent an empty string.
+pub const SYZYGY_EMPTY: &str = "<empty>";
+
 /// Fixed width of the path field. A width taken from `ui.available_width()`
 /// feeds an auto-size loop: the field widens the window, which widens the
 /// field, until the dialog covers the screen.
@@ -172,6 +177,14 @@ mod tests {
         let expected = if cfg!(windows) { ';' } else { ':' };
         assert_eq!(path_separator(), expected);
         assert_eq!(join_paths(["/a/egtb/5", "/b/egtb/6"]), format!("/a/egtb/5{expected}/b/egtb/6"));
+    }
+
+    #[test]
+    fn the_clear_value_is_the_stockfish_empty_sentinel() {
+        // PawnForge refuses an empty value ("Unknown option: SyzygyPath
+        // value") and keeps the loaded path; Stockfish and PawnForge both
+        // clear on `<empty>`.
+        assert_eq!(SYZYGY_EMPTY, "<empty>");
     }
 
     #[test]
