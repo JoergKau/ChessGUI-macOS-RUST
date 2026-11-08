@@ -18,7 +18,9 @@ static REGISTRY_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Use `path` for the registry from now on.
 pub fn configure(path: PathBuf) {
-    *REGISTRY_FILE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(path);
+    *REGISTRY_FILE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(path);
 }
 
 /// Record a running engine. `engine_pid` is also its process group ID.
@@ -37,7 +39,9 @@ pub fn unregister(engine_pid: u32) {
     let app = std::process::id();
     let lines: Vec<String> = read_lines(&path)
         .into_iter()
-        .filter(|line| parse_line(line).is_none_or(|entry| entry.app != app || entry.engine != engine_pid))
+        .filter(|line| {
+            parse_line(line).is_none_or(|entry| entry.app != app || entry.engine != engine_pid)
+        })
         .collect();
     write_lines(&path, &lines);
 }
@@ -59,12 +63,16 @@ pub fn sweep(path: &Path) -> Vec<String> {
     let mut messages = Vec::new();
     let mut kept = Vec::new();
     for line in read_lines(path) {
-        let Some(entry) = parse_line(&line) else { continue };
+        let Some(entry) = parse_line(&line) else {
+            continue;
+        };
         if process_alive(entry.app) {
             kept.push(line);
             continue;
         }
-        if process_alive(entry.engine) && command_of(entry.engine).is_some_and(|cmd| cmd.contains(&entry.binary)) {
+        if process_alive(entry.engine)
+            && command_of(entry.engine).is_some_and(|cmd| cmd.contains(&entry.binary))
+        {
             kill_group(entry.engine);
             messages.push(format!(
                 "stopped an engine left running by an earlier session: {} (pid {})",
@@ -86,7 +94,10 @@ pub fn kill_group(pid: u32) {
 }
 
 fn configured() -> Option<PathBuf> {
-    REGISTRY_FILE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+    REGISTRY_FILE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
 }
 
 /// Serialises read-modify-write cycles within this process.
@@ -117,7 +128,12 @@ fn parse_line(line: &str) -> Option<Entry> {
 
 fn read_lines(path: &Path) -> Vec<String> {
     std::fs::read_to_string(path)
-        .map(|text| text.lines().filter(|line| !line.is_empty()).map(str::to_string).collect())
+        .map(|text| {
+            text.lines()
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -169,7 +185,10 @@ mod tests {
     fn a_line_round_trips_and_a_bad_line_is_ignored() {
         let line = format_line(12, 34, Path::new("/opt/engines/sf stock"));
         let entry = parse_line(&line).unwrap();
-        assert_eq!((entry.app, entry.engine, entry.binary.as_str()), (12, 34, "/opt/engines/sf stock"));
+        assert_eq!(
+            (entry.app, entry.engine, entry.binary.as_str()),
+            (12, 34, "/opt/engines/sf stock")
+        );
         assert!(parse_line("not a registry line").is_none());
     }
 
@@ -178,9 +197,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("engines.txt");
         // Neither process exists: the app pid is far above any real one.
-        std::fs::write(&path, format_line(4_000_000, 4_000_001, Path::new("/nowhere/engine")) + "\n").unwrap();
+        std::fs::write(
+            &path,
+            format_line(4_000_000, 4_000_001, Path::new("/nowhere/engine")) + "\n",
+        )
+        .unwrap();
         let messages = sweep(&path);
-        assert!(messages.is_empty(), "nothing is running, so nothing is stopped");
+        assert!(
+            messages.is_empty(),
+            "nothing is running, so nothing is stopped"
+        );
         assert!(!path.exists(), "the stale line is removed");
     }
 
@@ -208,10 +234,18 @@ mod tests {
             .unwrap();
         let engine = child.id();
         let path = dir.path().join("engines.txt");
-        std::fs::write(&path, format!("{}\n", format_line(4_000_003, engine, &script))).unwrap();
+        std::fs::write(
+            &path,
+            format!("{}\n", format_line(4_000_003, engine, &script)),
+        )
+        .unwrap();
 
         let messages = sweep(&path);
-        assert_eq!(messages.len(), 1, "the engine of a dead app is stopped: {messages:?}");
+        assert_eq!(
+            messages.len(),
+            1,
+            "the engine of a dead app is stopped: {messages:?}"
+        );
         assert!(!path.exists());
         let mut child = child;
         let _ = child.wait();

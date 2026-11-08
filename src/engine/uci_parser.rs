@@ -77,10 +77,10 @@ pub fn parse_line(line: &str) -> Result<EngineEvent, UciParseError> {
 /// `UciOk { name: "", author: "", options: … }` event so callers don't
 /// lose information; the [`crate::engine::EngineProcess`] aggregator
 /// merges them back into the canonical UciOk.
-fn parse_id<'a, I: Iterator<Item = &'a str>>(
-    tokens: &mut I,
-) -> Result<EngineEvent, UciParseError> {
-    let kind = tokens.next().ok_or(UciParseError::Id { reason: "missing kind".to_string() })?;
+fn parse_id<'a, I: Iterator<Item = &'a str>>(tokens: &mut I) -> Result<EngineEvent, UciParseError> {
+    let kind = tokens.next().ok_or(UciParseError::Id {
+        reason: "missing kind".to_string(),
+    })?;
     let rest: String = tokens.collect::<Vec<_>>().join(" ");
     match kind {
         "name" => Ok(EngineEvent::UciOk {
@@ -352,7 +352,10 @@ where
             Ok(())
         }
         None => Err(UciParseError::Info {
-            reason: format!("missing/invalid integer for `{}`-class key", std::any::type_name::<T>()),
+            reason: format!(
+                "missing/invalid integer for `{}`-class key",
+                std::any::type_name::<T>()
+            ),
         }),
     }
 }
@@ -382,9 +385,12 @@ fn parse_bestmove<'a, I: Iterator<Item = &'a str>>(
     tokens: &mut I,
 ) -> Result<EngineEvent, UciParseError> {
     let buf: Vec<&str> = tokens.collect();
-    let first = buf.first().copied().ok_or_else(|| UciParseError::BestMove {
-        reason: "missing move".to_string(),
-    })?;
+    let first = buf
+        .first()
+        .copied()
+        .ok_or_else(|| UciParseError::BestMove {
+            reason: "missing move".to_string(),
+        })?;
     // `(none)` is the engine's way of saying there is no legal move.
     let best_move = if first == "(none)" {
         None
@@ -519,13 +525,20 @@ mod tests {
                 options,
             } if name.is_empty() && author.is_empty() && options.is_empty()
         ));
-        assert!(matches!(parse_line("readyok").unwrap(), EngineEvent::ReadyOk));
+        assert!(matches!(
+            parse_line("readyok").unwrap(),
+            EngineEvent::ReadyOk
+        ));
     }
 
     #[test]
     fn parses_id_name_and_author() {
         match parse_line("id name Stockfish 19").unwrap() {
-            EngineEvent::UciOk { name, author, options } => {
+            EngineEvent::UciOk {
+                name,
+                author,
+                options,
+            } => {
                 assert_eq!(name, "Stockfish 19");
                 assert!(author.is_empty());
                 assert!(options.is_empty());
@@ -533,7 +546,11 @@ mod tests {
             _ => panic!(),
         }
         match parse_line("id author the Stockfish developers").unwrap() {
-            EngineEvent::UciOk { name, author, options } => {
+            EngineEvent::UciOk {
+                name,
+                author,
+                options,
+            } => {
                 assert!(name.is_empty());
                 assert_eq!(author, "the Stockfish developers");
                 assert!(options.is_empty());
@@ -556,11 +573,16 @@ mod tests {
 
     #[test]
     fn parses_spin_option_with_bounds() {
-        let ev =
-            parse_line("option name Threads type spin default 1 min 1 max 1024").unwrap();
+        let ev = parse_line("option name Threads type spin default 1 min 1 max 1024").unwrap();
         if let EngineEvent::UciOk { options, .. } = ev {
-            assert_eq!(options[0].kind,
-                UciOptionKind::Spin { default: 1, min: 1, max: 1024 });
+            assert_eq!(
+                options[0].kind,
+                UciOptionKind::Spin {
+                    default: 1,
+                    min: 1,
+                    max: 1024
+                }
+            );
         } else {
             panic!();
         }
@@ -578,10 +600,7 @@ mod tests {
 
     #[test]
     fn parses_string_option() {
-        let ev = parse_line(
-            "option name Debug Log File type string default <empty>",
-        )
-        .unwrap();
+        let ev = parse_line("option name Debug Log File type string default <empty>").unwrap();
         if let EngineEvent::UciOk { options, .. } = ev {
             assert_eq!(options[0].name, "Debug Log File");
             assert_eq!(
@@ -597,16 +616,12 @@ mod tests {
 
     #[test]
     fn parses_check_option_with_true_default() {
-        let ev = parse_line(
-            "option name Syzygy50MoveRule type check default true",
-        )
-        .unwrap();
+        let ev = parse_line("option name Syzygy50MoveRule type check default true").unwrap();
         if let EngineEvent::UciOk { options, .. } = ev {
-            assert_eq!(
-                options[0].kind,
-                UciOptionKind::Check { default: true }
-            );
-        } else { panic!() }
+            assert_eq!(options[0].kind, UciOptionKind::Check { default: true });
+        } else {
+            panic!()
+        }
     }
 
     #[test]
@@ -761,12 +776,7 @@ mod tests {
             .fold(parse_line("id name Stockfish 19").unwrap())
             .is_none());
         assert!(acc
-            .fold(
-                parse_line(
-                    "option name Threads type spin default 1 min 1 max 1024",
-                )
-                .unwrap(),
-            )
+            .fold(parse_line("option name Threads type spin default 1 min 1 max 1024",).unwrap(),)
             .is_none());
         assert!(acc
             .fold(parse_line("option name Hash type spin default 16 min 1 max 33554432").unwrap())
@@ -778,7 +788,11 @@ mod tests {
             .fold(parse_line("uciok").unwrap())
             .expect("handshake must flush at `uciok`");
         match flushed {
-            EngineEvent::UciOk { name, options, author } => {
+            EngineEvent::UciOk {
+                name,
+                options,
+                author,
+            } => {
                 assert_eq!(name, "Stockfish 19");
                 assert_eq!(options.len(), 3);
                 assert_eq!(

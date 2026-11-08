@@ -1,5 +1,14 @@
 # SiliconBoard — Release Notes
 
+## v1.0.1
+
+**New in analysis mode:** each engine's current best move is drawn as an arrow
+on the board, from the centre of the from-square to the centre of the
+destination square. Engine A is green and engine B red, and the arrow follows
+the search as a new best move is found. When both engines choose the same move
+only one arrow is drawn. View → Analysis arrows switches the arrows on or off
+(on by default).
+
 ## v1.0
 
 A native macOS (Apple Silicon) UCI chess GUI in Rust: board on the left, live
@@ -101,7 +110,7 @@ across the top.
 - **Players on the board:** a loaded PGN shows its White and Black names on the
   player bars. A new game, a FEN, a play mode or a tournament replaces them.
 - **About:** the About item of the app menu shows the standard macOS panel:
-  "SiliconBoard", "Version 1.0", the project page as a clickable link
+  "SiliconBoard", "Version 1.0.1", the project page as a clickable link
   (https://github.com/JoergKau) and the licence, with the application icon.
 - **Icon:** the application icon is shown in the window and is included as
   `SiliconBoard.icns` for the app bundle.

@@ -399,11 +399,7 @@ impl TournamentDialog {
         if self.time_kind == TimeKind::Fischer {
             ui.horizontal(|ui| {
                 ui.add_sized([LABEL_WIDTH, FIELD_HEIGHT], egui::Label::new("Increment"));
-                ui.add(
-                    DragValue::new(&mut self.inc_sec)
-                        .range(0..=60)
-                        .suffix(" s"),
-                );
+                ui.add(DragValue::new(&mut self.inc_sec).range(0..=60).suffix(" s"));
             });
         }
         let tag = time_control_tag(&self.draft_time_control());
@@ -434,10 +430,7 @@ impl TournamentDialog {
         });
         ui.horizontal(|ui| {
             ui.add_space(LABEL_WIDTH + 6.0);
-            ui.checkbox(
-                &mut self.config.enable_adjudication,
-                "Enable adjudication",
-            );
+            ui.checkbox(&mut self.config.enable_adjudication, "Enable adjudication");
         });
         row(ui, "Match title", |ui| {
             let id = ui.make_persistent_id("match_title");
@@ -448,7 +441,13 @@ impl TournamentDialog {
                     .desired_width(360.0)
                     .hint_text("Engine match"),
             );
-            crate::gui::text_field::after_edit(ui, id, &mut self.config.event_name, selection, &response);
+            crate::gui::text_field::after_edit(
+                ui,
+                id,
+                &mut self.config.event_name,
+                selection,
+                &response,
+            );
         });
         ui.add_space(8.0);
         None
@@ -476,10 +475,7 @@ impl TournamentDialog {
                 action = Some(TournamentAction::BrowseBook);
             }
             if ui
-                .add_enabled(
-                    !self.book_path.trim().is_empty(),
-                    Button::new("Clear"),
-                )
+                .add_enabled(!self.book_path.trim().is_empty(), Button::new("Clear"))
                 .clicked()
             {
                 self.book_path.clear();
@@ -498,17 +494,21 @@ impl TournamentDialog {
                     .desired_width(340.0)
                     .hint_text("optional PolyGlot moves"),
             );
-            crate::gui::text_field::after_edit(ui, id, &mut self.move_book_path, selection, &response);            if ui
+            crate::gui::text_field::after_edit(
+                ui,
+                id,
+                &mut self.move_book_path,
+                selection,
+                &response,
+            );
+            if ui
                 .add(Button::new("Browse…").min_size(Vec2::new(88.0, FIELD_HEIGHT)))
                 .clicked()
             {
                 action = Some(TournamentAction::BrowseMoveBook);
             }
             if ui
-                .add_enabled(
-                    !self.move_book_path.trim().is_empty(),
-                    Button::new("Clear"),
-                )
+                .add_enabled(!self.move_book_path.trim().is_empty(), Button::new("Clear"))
                 .clicked()
             {
                 self.move_book_path.clear();
@@ -517,16 +517,14 @@ impl TournamentDialog {
         ui.horizontal(|ui| {
             ui.add_space(LABEL_WIDTH + 6.0);
             ui.label(
-                RichText::new("An EPD file supplies start positions; a .bin file supplies opening moves.")
-                    .size(12.0)
-                    .color(theme::MUTED),
+                RichText::new(
+                    "An EPD file supplies start positions; a .bin file supplies opening moves.",
+                )
+                .size(12.0)
+                .color(theme::MUTED),
             );
         });
-        let polyglot = self
-            .book_path
-            .trim()
-            .to_ascii_lowercase()
-            .ends_with(".bin");
+        let polyglot = self.book_path.trim().to_ascii_lowercase().ends_with(".bin");
         ui.horizontal(|ui| {
             ui.add_sized([LABEL_WIDTH, FIELD_HEIGHT], egui::Label::new("Order"));
             if polyglot {
@@ -544,11 +542,7 @@ impl TournamentDialog {
                             BookOrder::Sequential => "Sequential",
                         })
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut self.book_order,
-                                BookOrder::Random,
-                                "Random",
-                            );
+                            ui.selectable_value(&mut self.book_order, BookOrder::Random, "Random");
                             ui.selectable_value(
                                 &mut self.book_order,
                                 BookOrder::Sequential,
@@ -567,7 +561,10 @@ impl TournamentDialog {
         section_heading(ui, "Adjudication");
         ui.add_enabled_ui(self.config.enable_adjudication, |ui| {
             ui.horizontal(|ui| {
-                ui.add_sized([LABEL_WIDTH, FIELD_HEIGHT], egui::Label::new("Resign after"));
+                ui.add_sized(
+                    [LABEL_WIDTH, FIELD_HEIGHT],
+                    egui::Label::new("Resign after"),
+                );
                 ui.add(
                     DragValue::new(&mut self.config.resign_move_count)
                         .range(0..=1_000)
@@ -610,7 +607,10 @@ impl TournamentDialog {
         let mut action = None;
         section_heading(ui, "PGN output");
         ui.horizontal(|ui| {
-            ui.add_sized([LABEL_WIDTH, FIELD_HEIGHT], egui::Label::new("Save games to"));
+            ui.add_sized(
+                [LABEL_WIDTH, FIELD_HEIGHT],
+                egui::Label::new("Save games to"),
+            );
             let id = ui.make_persistent_id("tournament_pgn_path");
             let selection = crate::gui::text_field::selection_before(ui, id);
             let response = ui.add(
@@ -630,9 +630,11 @@ impl TournamentDialog {
         ui.horizontal(|ui| {
             ui.add_space(LABEL_WIDTH + 6.0);
             ui.label(
-                RichText::new("The file is replaced when the match starts; games are written in round order.")
-                    .size(12.0)
-                    .color(theme::MUTED),
+                RichText::new(
+                    "The file is replaced when the match starts; games are written in round order.",
+                )
+                .size(12.0)
+                .color(theme::MUTED),
             );
         });
         action
@@ -733,11 +735,7 @@ pub fn show_progress(ctx: &egui::Context, status: &TournamentStatus) -> Progress
                     ui.label(
                         RichText::new(format!(
                             "Game {}: {} vs {} — move {}{}",
-                            game.number,
-                            game.white,
-                            game.black,
-                            game.fullmove,
-                            score
+                            game.number, game.white, game.black, game.fullmove, score
                         ))
                         .size(13.0)
                         .color(theme::TEXT),
@@ -764,11 +762,7 @@ pub fn show_progress(ctx: &egui::Context, status: &TournamentStatus) -> Progress
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         for result in status.results.iter().rev() {
-                            ui.label(
-                                RichText::new(result)
-                                    .size(12.0)
-                                    .color(theme::TEXT),
-                            );
+                            ui.label(RichText::new(result).size(12.0).color(theme::TEXT));
                         }
                     });
             }
@@ -849,11 +843,7 @@ pub fn show_finished(ctx: &egui::Context, status: &TournamentStatus) -> bool {
                     .auto_shrink([false, true])
                     .show(ui, |ui| {
                         for result in status.results.iter().rev() {
-                            ui.label(
-                                RichText::new(result)
-                                    .size(12.0)
-                                    .color(theme::TEXT),
-                            );
+                            ui.label(RichText::new(result).size(12.0).color(theme::TEXT));
                         }
                     });
             }
@@ -899,7 +889,10 @@ mod tests {
     fn the_dialog_starts_from_the_configuration() {
         let dialog = TournamentDialog::new(config(), Vec::new());
         assert_eq!(dialog.time_kind, TimeKind::Fischer);
-        assert_eq!((dialog.base_min, dialog.base_sec, dialog.inc_sec), (4, 0, 1));
+        assert_eq!(
+            (dialog.base_min, dialog.base_sec, dialog.inc_sec),
+            (4, 0, 1)
+        );
         assert_eq!(dialog.config.games, 2);
         assert!(dialog.config.reverse_colors);
         assert_eq!(dialog.book_order, BookOrder::Random);

@@ -10,6 +10,9 @@
 //!    coordinates are not drawn: they were misplaced and are removed for now,
 //! 3. every piece sprite from the cburnett SVG set rasterised at startup
 //!    (`crate::assets::Assets::pieces`),
+//! 4. in analysis mode, one arrow per engine for its current best move (the
+//!    first move of the principal variation), with a shaft and a triangular
+//!    head,
 //! 5. a lifted copy of a piece being dragged at the cursor's square,
 //! 6. a promotion modal (Q / R / B / N over the destination square) when a
 //!    pawn-to-back-rank move is pending; ESC or a click outside cancels.
@@ -43,8 +46,8 @@
 //! all behave correctly.
 
 use eframe::egui::{
-    self, Color32, Key, Painter, Pos2, Rect, Sense, TextureId, Ui, Vec2,
-    load::SizedTexture,
+    self, load::SizedTexture, Color32, Key, Painter, Pos2, Rect, Sense, Shape, Stroke, TextureId,
+    Ui, Vec2,
 };
 use shakmaty::{Board, File, Move, Piece, Rank, Square};
 
@@ -86,6 +89,105 @@ const PROMO_HOVER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xd5, 0
 
 /// Tint for the square the dragged piece currently hovers over.
 const DRAG_HOVER_FILL: Color32 = Color32::from_rgba_unmultiplied_const(0xdd, 0xdd, 0xdd, 0x28);
+
+/// Evaluation-arrow shaft width, as a fraction of a square: 11 units in a
+/// 64-units-per-square coordinate system.
+const ARROW_LINE_WIDTH: f32 = 11.0 / 64.0;
+
+/// Gap between the shaft and the destination square's centre: 10/64 of a
+/// square, or 20/64 for an arrow that shares its destination with another
+/// arrow arriving from a similar direction.
+const ARROW_END_MARGIN: f32 = 10.0 / 64.0;
+const ARROW_SHORT_MARGIN: f32 = 20.0 / 64.0;
+
+/// The arrowhead is the SVG marker `M0,0 V4 L3,2 Z`, sized in marker
+/// units (the stroke width): half-width 2, tip at 3, and its base sits at
+/// `refX` 2.05 along the shaft. The tip therefore reaches (3 − 2.05) marker
+/// units past the shaft's end, just short of the destination centre.
+const ARROW_HEAD_HALF_WIDTH: f32 = 2.0;
+const ARROW_HEAD_REF_X: f32 = 2.05;
+const ARROW_HEAD_TIP: f32 = 3.0;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Evaluation arrows
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One engine's best-move arrow, drawn on the board in analysis mode.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct EvalArrow {
+    /// Square the piece moves from.
+    pub from: Square,
+    /// Square it moves to.
+    pub to: Square,
+    /// Shaft and head colour, including transparency.
+    pub color: Color32,
+}
+
+/// The from/to squares of a UCI move (`e2e4`, `e7e8q`, or a castling move such
+/// as `e1g1`). The arrow follows the same rule as the board: the destination
+/// is the king's square on castling, which is exactly what the UCI move names.
+pub fn arrow_endpoints(uci_move: &str) -> Option<(Square, Square)> {
+    let bytes = uci_move.as_bytes();
+    if bytes.len() < 4 {
+        return None;
+    }
+    let from = Square::from_ascii(&bytes[0..2]).ok()?;
+    let to = Square::from_ascii(&bytes[2..4]).ok()?;
+    Some((from, to))
+}
+
+/// Pixel geometry of one arrow: the round start cap, the shaft and the head.
+#[derive(Clone, Debug)]
+struct ArrowGeometry {
+    /// Centre of the source square; the round cap sits here.
+    start: Pos2,
+    /// Shaft start, one cap radius along the direction, so the translucent
+    /// colour is not blended twice where the cap meets the shaft.
+    shaft_start: Pos2,
+    /// Shaft end at the head's base.
+    shaft_end: Pos2,
+    /// The three corners of the head, tip last.
+    head: [Pos2; 3],
+    /// Shaft width in pixels.
+    width: f32,
+}
+
+/// Geometry of an arrow from the centre of `from` to the centre of `to`,
+/// following the arrow drawing rules above. `shortened` keeps the head farther
+/// from the centre when another arrow points at the same square. `None` for a
+/// degenerate move.
+fn arrow_geometry(from: Pos2, to: Pos2, square: f32, shortened: bool) -> Option<ArrowGeometry> {
+    let delta = to - from;
+    let length = delta.length();
+    if length < square * 0.25 {
+        return None;
+    }
+    let direction = delta / length;
+    let perpendicular = Vec2::new(-direction.y, direction.x);
+    let width = ARROW_LINE_WIDTH * square;
+    // The shaft stops short of the destination centre; the marker's tip then
+    // reaches almost exactly that centre (or stops farther out when shortened).
+    let margin = if shortened {
+        ARROW_SHORT_MARGIN
+    } else {
+        ARROW_END_MARGIN
+    };
+    let line_end = to - direction * (margin * square);
+    let base = line_end - direction * (ARROW_HEAD_REF_X * width);
+    let tip = line_end + direction * ((ARROW_HEAD_TIP - ARROW_HEAD_REF_X) * width);
+    let half_width = ARROW_HEAD_HALF_WIDTH * width;
+    Some(ArrowGeometry {
+        start: from,
+        shaft_start: from + direction * (width / 2.0),
+        shaft_end: base,
+        head: [
+            base + perpendicular * half_width,
+            base - perpendicular * half_width,
+            tip,
+        ],
+        width,
+    })
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Interaction state machine
@@ -221,10 +323,7 @@ pub enum BoardAction {
     /// A promotion just became pending; the modal is drawn by the widget on
     /// the *next* frame and resolves to [`BoardAction::RequestMove`] when
     /// the user picks Q/R/B/N.
-    PromotionChoice {
-        from: Square,
-        to: Square,
-    },
+    PromotionChoice { from: Square, to: Square },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,15 +333,19 @@ pub enum BoardAction {
 /// Draw one [`BoardView`] inside the given `Ui` and return the pending
 /// [`BoardAction`]. `input_allowed` is `false` when a person may not move
 /// now (an engine is on the move); the board is then shown read-only.
+/// `arrows` are the analysis-mode best-move arrows, painted above the pieces.
 pub fn show(
     ui: &mut Ui,
     game_state: &GameState,
     assets: &Assets,
     view: &mut BoardView,
     input_allowed: bool,
+    arrows: &[EvalArrow],
 ) -> BoardAction {
     let avail_rect = ui.available_rect_before_wrap();
-    let square = (avail_rect.width().min(avail_rect.height()) / 8.0).floor().max(1.0);
+    let square = (avail_rect.width().min(avail_rect.height()) / 8.0)
+        .floor()
+        .max(1.0);
     let board_px = square * 8.0;
 
     let board_min = Pos2::new(
@@ -269,8 +372,8 @@ pub fn show(
     // highlights correctly.
     if let Interaction::Dragging { from, .. } = view.interaction {
         if let Some(pointer) = ui.input(|i| i.pointer.hover_pos()) {
-            let cursor = cursor_to_square(&board_rect, pointer, view.white_on_bottom)
-                .unwrap_or(from);
+            let cursor =
+                cursor_to_square(&board_rect, pointer, view.white_on_bottom).unwrap_or(from);
             view.interaction = Interaction::Dragging { from, cursor };
         }
     }
@@ -299,18 +402,16 @@ pub fn show(
             if !interactive {
                 continue;
             }
-            if let Some(a) = handle_interaction(
-                &response,
-                sq,
-                game_state,
-                view,
-                board,
-                &board_rect,
-            ) {
+            if let Some(a) = handle_interaction(&response, sq, game_state, view, board, &board_rect)
+            {
                 action = a;
             }
         }
     }
+
+    // Evaluation arrows of the loaded engines, above the pieces but under a
+    // piece the user is dragging.
+    paint_eval_arrows(ui, view.white_on_bottom, square, board_rect, arrows);
 
     // Lifted piece: follows the pointer on top of the squares.
     if let Interaction::Dragging { from, .. } = view.interaction {
@@ -343,7 +444,7 @@ pub fn show(
         }
     }
 
-    // ESC cancels the pending promotion, mirroring lichess behaviour.
+    // ESC cancels the pending promotion.
     if matches!(view.interaction, Interaction::Promoting { .. })
         && ui.input(|i| i.key_pressed(Key::Escape))
     {
@@ -392,11 +493,7 @@ fn square_rect(board_rect: Rect, square: f32, row: u8, col: u8) -> Rect {
 /// Map a pointer position onto a shakmaty [`Square`] via the *board* rect.
 /// Row / col are clamped so a pointer one pixel past the edge still maps to
 /// the last rank / file.
-fn cursor_to_square(
-    board_rect: &Rect,
-    pointer: Pos2,
-    white_on_bottom: bool,
-) -> Option<Square> {
+fn cursor_to_square(board_rect: &Rect, pointer: Pos2, white_on_bottom: bool) -> Option<Square> {
     if !board_rect.contains(pointer) {
         return None;
     }
@@ -435,8 +532,8 @@ fn paint_board_texture(ui: &Ui, board_rect: Rect, handle: &egui::TextureHandle) 
 }
 
 /// Rank numbers in the top-left corner of the left-hand squares, and file
-/// letters in the bottom-right corner of the bottom row, as en-croissant draws
-/// them. They follow the orientation of the board.
+/// letters in the bottom-right corner of the bottom row. They follow the
+/// orientation of the board.
 fn paint_coordinates(ui: &Ui, board_rect: Rect, square: f32, white_on_bottom: bool) {
     let font = egui::FontId::proportional(13.0);
     let painter = ui.painter();
@@ -544,6 +641,97 @@ fn paint_overlays(
     }
 }
 
+/// Paint one arrow per engine: shaft from the source square's centre, head
+/// pointing at the destination square's centre. Both squares are mapped
+/// through the current orientation, so the arrows follow a flipped board.
+fn paint_eval_arrows(
+    ui: &Ui,
+    white_on_bottom: bool,
+    square: f32,
+    board_rect: Rect,
+    arrows: &[EvalArrow],
+) {
+    let shortened = shortened_arrows(white_on_bottom, square, board_rect, arrows);
+    for (arrow, shortened) in arrows.iter().zip(shortened) {
+        for shape in arrow_shapes(white_on_bottom, square, board_rect, *arrow, shortened) {
+            ui.painter().add(shape);
+        }
+    }
+}
+
+/// An arrow is shortened when another arrow shares its
+/// destination square and arrives from less than 90° away, so the two heads do
+/// not sit on top of each other.
+fn shortened_arrows(
+    white_on_bottom: bool,
+    square: f32,
+    board_rect: Rect,
+    arrows: &[EvalArrow],
+) -> Vec<bool> {
+    let centres = |arrow: &EvalArrow| -> Option<(Pos2, Pos2)> {
+        let (from, to) = (
+            square_to_coords(white_on_bottom, arrow.from)?,
+            square_to_coords(white_on_bottom, arrow.to)?,
+        );
+        Some((
+            square_rect(board_rect, square, from.0, from.1).center(),
+            square_rect(board_rect, square, to.0, to.1).center(),
+        ))
+    };
+    let centres: Vec<Option<(Pos2, Pos2)>> = arrows.iter().map(centres).collect();
+    let mut shortened = vec![false; arrows.len()];
+    for i in 0..arrows.len() {
+        for j in (i + 1)..arrows.len() {
+            if arrows[i].to != arrows[j].to {
+                continue;
+            }
+            let (Some((from_i, to_i)), Some((from_j, to_j))) = (centres[i], centres[j]) else {
+                continue;
+            };
+            // Vectors from the shared destination back to each origin. A
+            // positive dot product means the origins are less than 90° apart.
+            if (from_i - to_i).dot(from_j - to_j) > 0.0 {
+                shortened[i] = true;
+                shortened[j] = true;
+            }
+        }
+    }
+    shortened
+}
+
+/// The three shapes of one arrow — round cap, shaft and head — so the painted
+/// geometry can be checked without a renderer. Empty for an unknown square or a
+/// degenerate move.
+fn arrow_shapes(
+    white_on_bottom: bool,
+    square: f32,
+    board_rect: Rect,
+    arrow: EvalArrow,
+    shortened: bool,
+) -> Vec<Shape> {
+    let (Some(from), Some(to)) = (
+        square_to_coords(white_on_bottom, arrow.from),
+        square_to_coords(white_on_bottom, arrow.to),
+    ) else {
+        return Vec::new();
+    };
+    let from = square_rect(board_rect, square, from.0, from.1).center();
+    let to = square_rect(board_rect, square, to.0, to.1).center();
+    let Some(geometry) = arrow_geometry(from, to, square, shortened) else {
+        return Vec::new();
+    };
+    // Round cap at the origin, the shaft, then the head. The shaft stops at the
+    // head's base, so the translucent colour is not blended twice.
+    vec![
+        Shape::circle_filled(geometry.start, geometry.width / 2.0, arrow.color),
+        Shape::line_segment(
+            [geometry.shaft_start, geometry.shaft_end],
+            Stroke::new(geometry.width, arrow.color),
+        ),
+        Shape::convex_polygon(geometry.head.to_vec(), arrow.color, Stroke::NONE),
+    ]
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Piece drawing
 // ─────────────────────────────────────────────────────────────────────────────
@@ -572,13 +760,9 @@ const PROMOTION_CHOICES: [PieceKind; 4] = [
 /// Compute the (row, col) on-screen position of each promotion choice.
 ///
 /// The modal renders over the destination square and extends toward the
-/// board interior (the direction from `to` toward `from`), matching lichess.
+/// board interior (the direction from `to` toward `from`).
 /// Pure function so it can be unit-tested for both orientations.
-fn promotion_modal_layout(
-    from: Square,
-    to: Square,
-    white_on_bottom: bool,
-) -> [(u8, u8); 4] {
+fn promotion_modal_layout(from: Square, to: Square, white_on_bottom: bool) -> [(u8, u8); 4] {
     let (from_row, _from_col) = square_to_coords(white_on_bottom, from).unwrap_or((0, 0));
     let (to_row, to_col) = square_to_coords(white_on_bottom, to).unwrap_or((0, 0));
     // Direction from `to` toward `from` in row space.
@@ -598,10 +782,9 @@ fn promotion_modal_layout(
 /// Find the promotion legal move matching `kind`, or `None`.
 fn promotion_move_for(game: &GameState, from: Square, to: Square, kind: PieceKind) -> Option<Move> {
     let role = kind.role();
-    game
-        .legal_moves_from(from)
-        .into_iter()
-        .find(|m| m.to() == to && matches!(m, Move::Normal { promotion: Some(r), .. } if *r == role))
+    game.legal_moves_from(from).into_iter().find(|m| {
+        m.to() == to && matches!(m, Move::Normal { promotion: Some(r), .. } if *r == role)
+    })
 }
 
 /// Render and interact with the promotion modal. Returns the pending
@@ -702,18 +885,14 @@ fn handle_interaction(
                 return Some(BoardAction::None);
             };
 
-            // BUG-4-02: dropping back on the origin keeps the piece selected
-            // (lichess / Nibbler behaviour).
+            // Dropping back on the origin keeps the piece selected.
             if to == from {
                 view.interaction = Interaction::Selected { from };
                 return Some(BoardAction::PieceSelected { from });
             }
 
             let legal = view.legal_moves(game_state, from).to_vec();
-            let matched = legal
-                .iter()
-                .copied()
-                .find(|m| target_square(*m) == to);
+            let matched = legal.iter().copied().find(|m| target_square(*m) == to);
             if let Some(m) = matched {
                 let choices = GameState::promotion_choices_from(&legal, to);
                 if choices.is_empty() {
@@ -749,10 +928,7 @@ fn handle_interaction(
                     return Some(BoardAction::None);
                 }
                 let legal = view.legal_moves(game_state, from).to_vec();
-                let matched = legal
-                    .iter()
-                    .copied()
-                    .find(|m| target_square(*m) == sq);
+                let matched = legal.iter().copied().find(|m| target_square(*m) == sq);
                 if let Some(m) = matched {
                     let choices = GameState::promotion_choices_from(&legal, sq);
                     if choices.is_empty() {
@@ -842,7 +1018,7 @@ mod tests {
     #[test]
     fn cursor_to_square_clamps_and_rejects() {
         let board = Rect::from_min_size(Pos2::ZERO, Vec2::splat(800.0)); // 100 px per square
-        // Centre of d4: col 3, row (rank 8 -> row 0; rank 4 -> row 4).
+                                                                         // Centre of d4: col 3, row (rank 8 -> row 0; rank 4 -> row 4).
         assert_eq!(
             cursor_to_square(&board, Pos2::new(350.0, 450.0), true),
             Some(sq("d4"))
@@ -865,14 +1041,16 @@ mod tests {
         // knights/bishops are out. Use a FEN with castling ready (small
         // army — each side has only king + rooks + pawns — but the castling
         // rights and empty paths are correct).
-        let game = GameState::from_fen(
-            "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1",
-        )
-        .unwrap();
+        let game =
+            GameState::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1").unwrap();
         let e1 = sq("e1");
         let legal = game.legal_moves_from(e1);
-        let king_side = legal.iter().find(|m| matches!(m, Move::Castle { rook, .. } if rook.file().to_u32() == 7));
-        let queen_side = legal.iter().find(|m| matches!(m, Move::Castle { rook, .. } if rook.file().to_u32() == 0));
+        let king_side = legal
+            .iter()
+            .find(|m| matches!(m, Move::Castle { rook, .. } if rook.file().to_u32() == 7));
+        let queen_side = legal
+            .iter()
+            .find(|m| matches!(m, Move::Castle { rook, .. } if rook.file().to_u32() == 0));
         assert!(king_side.is_some(), "O-O should be legal in this FEN");
         assert!(queen_side.is_some(), "O-O-O should be legal in this FEN");
         // Kingside O-O: rook target h1 but human clicks g1.
@@ -936,6 +1114,188 @@ mod tests {
         assert_eq!(m.to(), to);
     }
 
+    #[test]
+    fn uci_moves_give_their_arrow_endpoints() {
+        assert_eq!(arrow_endpoints("e2e4"), Some((sq("e2"), sq("e4"))));
+        // Castling names the king's destination, which is what the board shows.
+        assert_eq!(arrow_endpoints("e1g1"), Some((sq("e1"), sq("g1"))));
+        // A promotion suffix is not part of the arrow's endpoints.
+        assert_eq!(arrow_endpoints("e7e8q"), Some((sq("e7"), sq("e8"))));
+        assert_eq!(arrow_endpoints("e2e"), None);
+        assert_eq!(arrow_endpoints("zzzz"), None);
+        assert_eq!(arrow_endpoints(""), None);
+    }
+
+    #[test]
+    fn arrow_runs_from_centre_to_centre_with_a_head_at_the_destination() {
+        let square = 100.0;
+        let from = Pos2::new(50.0, 750.0);
+        let to = Pos2::new(450.0, 350.0);
+        let geometry = arrow_geometry(from, to, square, false).expect("a real move has an arrow");
+
+        assert_eq!(geometry.start, from, "the shaft starts at the from centre");
+        assert!(
+            (geometry.width - ARROW_LINE_WIDTH * square).abs() < f32::EPSILON,
+            "the shaft uses 11/64 of a square"
+        );
+        // The cap and the shaft touch but do not overlap.
+        let cap_gap = (geometry.shaft_start - from).length();
+        assert!((cap_gap - geometry.width / 2.0).abs() < 0.01);
+
+        // The head points at the destination centre: its tip is between the
+        // shaft's end and the centre, and on the from→to line.
+        let direction = (to - from).normalized();
+        let tip_off_line = {
+            let along = (geometry.head[2] - from).dot(direction);
+            let closest = from + direction * along;
+            (geometry.head[2] - closest).length()
+        };
+        assert!(tip_off_line < 0.01, "the tip lies on the arrow's line");
+        let tip_to_destination = (to - geometry.head[2]).length();
+        assert!(
+            tip_to_destination < square * 0.02,
+            "the tip nearly reaches the destination centre ({tip_to_destination})"
+        );
+        let shaft_end_to_destination = (to - geometry.shaft_end).length();
+        assert!(
+            shaft_end_to_destination > tip_to_destination,
+            "the head sits beyond the shaft's end"
+        );
+
+        // The base is symmetric around the shaft, as the marker is.
+        let base_centre = Pos2::new(
+            (geometry.head[0].x + geometry.head[1].x) / 2.0,
+            (geometry.head[0].y + geometry.head[1].y) / 2.0,
+        );
+        assert!(
+            (geometry.head[0].distance(base_centre) - geometry.head[1].distance(base_centre)).abs()
+                < 0.01
+        );
+    }
+
+    #[test]
+    fn a_zero_length_arrow_is_not_drawn() {
+        assert!(
+            arrow_geometry(Pos2::new(10.0, 10.0), Pos2::new(10.0, 10.0), 100.0, false).is_none()
+        );
+    }
+
+    #[test]
+    fn an_arrow_that_shares_its_destination_is_shortened() {
+        let board_rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(800.0));
+        let square = 100.0;
+        let colour = Color32::WHITE;
+        let arrow = |from: &str, to: &str| EvalArrow {
+            from: sq(from),
+            to: sq(to),
+            color: colour,
+        };
+
+        // e2→f4 and d3→f4 converge on f4 from nearby origins: both shorten.
+        let converging = [arrow("e2", "f4"), arrow("d3", "f4")];
+        assert_eq!(
+            shortened_arrows(true, square, board_rect, &converging),
+            vec![true, true]
+        );
+        // No shortening when the destination centre is exactly the tip: the
+        // shortened arrow stops farther out.
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(800.0));
+        let e2 = square_rect(rect, square, 6, 4).center();
+        let f4 = square_rect(rect, square, 4, 5).center();
+        let straight = arrow_geometry(e2, f4, square, false).unwrap();
+        let short = arrow_geometry(e2, f4, square, true).unwrap();
+        assert!(short.head[2].distance(f4) > straight.head[2].distance(f4));
+        assert!(short.shaft_end.distance(f4) > straight.shaft_end.distance(f4));
+
+        // An arrow from the other side of f4 is more than 90° away: neither
+        // arrow is shortened.
+        let opposing = [arrow("e2", "f4"), arrow("h4", "f4")];
+        assert_eq!(
+            shortened_arrows(true, square, board_rect, &opposing),
+            vec![false, false]
+        );
+        // Different destinations never interact.
+        let apart = [arrow("e2", "f4"), arrow("d3", "e5")];
+        assert_eq!(
+            shortened_arrows(true, square, board_rect, &apart),
+            vec![false, false]
+        );
+    }
+
+    #[test]
+    fn an_eval_arrow_paints_a_cap_a_shaft_and_a_head_from_square_centres() {
+        let board_rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(800.0));
+        let square = 100.0;
+        let color = Color32::from_rgba_unmultiplied(0x15, 0x78, 0x1b, 0x99);
+        let arrow = EvalArrow {
+            from: sq("e2"),
+            to: sq("e4"),
+            color,
+        };
+        let shapes = arrow_shapes(true, square, board_rect, arrow, false);
+        assert_eq!(shapes.len(), 3, "cap, shaft and head");
+
+        // The cap sits on the e2 centre: 50 + 4.5 * 100, and row 6 → y 650.
+        let e2 = Pos2::new(450.0, 650.0);
+        let e4 = Pos2::new(450.0, 450.0);
+        match &shapes[0] {
+            Shape::Circle(circle) => {
+                assert_eq!(circle.center, e2);
+                assert!(circle.fill == color);
+            }
+            other => panic!("expected the cap circle, got {other:?}"),
+        }
+        match &shapes[1] {
+            Shape::LineSegment { points, stroke } => {
+                assert_eq!(points[0].x, e2.x);
+                assert!(points[0].y < e2.y && points[0].y > e4.y);
+                assert_eq!(points[1].x, e2.x, "the shaft is vertical");
+                assert!(stroke.color == color);
+            }
+            other => panic!("expected the shaft, got {other:?}"),
+        }
+        match &shapes[2] {
+            Shape::Path(path) => {
+                assert_eq!(path.points.len(), 3, "the head is a triangle");
+                assert!(path.fill == color);
+                // Pointing up with White at the bottom.
+                assert!(path.points[2].y < path.points[0].y);
+            }
+            other => panic!("expected the head, got {other:?}"),
+        }
+
+        // Flipping the board mirrors the arrow: it points down instead.
+        let flipped = arrow_shapes(false, square, board_rect, arrow, false);
+        match &flipped[2] {
+            Shape::Path(path) => assert!(path.points[2].y > path.points[0].y),
+            other => panic!("expected the head, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn arrows_follow_the_board_orientation() {
+        // On a white-on-bottom board, a1 is the bottom-left square and h8 the
+        // top-right one, so the squares' centres mirror with the orientation.
+        let board_rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(800.0));
+        let square = 100.0;
+        let centre = |white_on_bottom: bool, name: &str| {
+            let (row, col) = square_to_coords(white_on_bottom, sq(name)).unwrap();
+            square_rect(board_rect, square, row, col).center()
+        };
+        let a1_white = centre(true, "a1");
+        let a1_black = centre(false, "a1");
+        assert_eq!(a1_white, Pos2::new(50.0, 750.0));
+        assert_eq!(a1_black, Pos2::new(750.0, 50.0));
+        // d2 → d4 points straight up when White is at the bottom, straight
+        // down when the board is flipped.
+        let d2_white = centre(true, "d2");
+        let d4_white = centre(true, "d4");
+        let d2_black = centre(false, "d2");
+        let d4_black = centre(false, "d4");
+        assert!((d4_white - d2_white).y < 0.0);
+        assert!((d4_black - d2_black).y > 0.0);
+    }
+
     /// A timing harness for the board hot path. It is ignored by default, so
     /// the normal suite stays fast. Run it on a release build:
     ///
@@ -964,7 +1324,7 @@ mod tests {
         };
         let paint = |view: &mut BoardView| {
             let _ = ctx.run_ui(input.clone(), |ui| {
-                let _ = show(ui, &game, &assets, view, true);
+                let _ = show(ui, &game, &assets, view, true, &[]);
             });
         };
 

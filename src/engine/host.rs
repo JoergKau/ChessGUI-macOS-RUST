@@ -15,7 +15,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use crate::engine::analysis::{AnalysisSession, AnalysisStatus, SearchGoal};
-use crate::engine::protocol::{EngineCommand, EngineEvent, EngineStats, GoControl, Score, UciOption};
+use crate::engine::protocol::{
+    EngineCommand, EngineEvent, EngineStats, GoControl, Score, UciOption,
+};
 use crate::engine::watchdog::{StallReason, Timing, Watchdog};
 use crate::engine::{EngineProcess, InfoSlot, ParsedUciLine};
 
@@ -62,13 +64,20 @@ impl EngineHost {
     /// Take ownership of a freshly spawned engine and start its UCI handshake.
     ///
     /// Subscribes before sending anything, so no output is missed.
-    pub fn attach_with_settings(process: EngineProcess, settings: BTreeMap<String, String>) -> Self {
+    pub fn attach_with_settings(
+        process: EngineProcess,
+        settings: BTreeMap<String, String>,
+    ) -> Self {
         Self::attach_with(process, Timing::default(), settings)
     }
 
     /// [`Self::attach_with_settings`] with the deadlines given, so tests need
     /// not wait for the production values.
-    pub fn attach_with(process: EngineProcess, timing: Timing, settings: BTreeMap<String, String>) -> Self {
+    pub fn attach_with(
+        process: EngineProcess,
+        timing: Timing,
+        settings: BTreeMap<String, String>,
+    ) -> Self {
         let events = process
             .take_event_receiver()
             .expect("an engine event receiver is handed out once");
@@ -91,7 +100,9 @@ impl EngineHost {
 
     /// The engine's watchdog, locked. Never held across a call into the engine.
     fn watch(&self) -> MutexGuard<'_, Watchdog> {
-        self.watchdog.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.watchdog
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     /// Turn analysis on or off and point it at `fen` with `goal`. The position
@@ -151,14 +162,21 @@ impl EngineHost {
         let before = self.analysis.status();
         if self.process.has_exited() {
             if before != AnalysisStatus::Offline {
-                log::warn!("{} has exited; marking it offline", self.process.binary().display());
+                log::warn!(
+                    "{} has exited; marking it offline",
+                    self.process.binary().display()
+                );
             }
             self.analysis.mark_offline();
         }
         let mut changed = before != self.analysis.status();
         // The merged `info` comes first: the `bestmove` that follows it in the
         // queue must find its statistics already applied.
-        let pending = self.info.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take();
+        let pending = self
+            .info
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
         if let Some(stats) = pending {
             changed = true;
             let commands = self.analysis.on_event(&EngineEvent::Info(stats));
@@ -181,7 +199,11 @@ impl EngineHost {
                     self.dispatch(commands);
                 }
                 ParsedUciLine::Unknown(line) => {
-                    log::trace!("{}: unhandled line `{}`", self.process.binary().display(), line);
+                    log::trace!(
+                        "{}: unhandled line `{}`",
+                        self.process.binary().display(),
+                        line
+                    );
                 }
                 ParsedUciLine::ParseError { line, source } => {
                     log::debug!(
@@ -313,9 +335,17 @@ impl EngineHost {
             // Heartbeats are frequent but uninteresting; the session log keeps
             // them only at trace so an idle engine cannot fill the file.
             if matches!(command, EngineCommand::IsReady) {
-                log::trace!("{} <- {}", self.process.binary().display(), command.to_wire_string());
+                log::trace!(
+                    "{} <- {}",
+                    self.process.binary().display(),
+                    command.to_wire_string()
+                );
             } else {
-                log::debug!("{} <- {}", self.process.binary().display(), command.to_wire_string());
+                log::debug!(
+                    "{} <- {}",
+                    self.process.binary().display(),
+                    command.to_wire_string()
+                );
             }
             if let Err(error) = self.process.try_send(command.clone()) {
                 log::warn!(
@@ -343,7 +373,11 @@ mod tests {
 
     /// Same fixture order as the engine tests: env override, Homebrew Stockfish, Triumviratus.
     /// Pump the host until `done` holds or the timeout passes.
-    fn pump_until(host: &mut EngineHost, timeout: Duration, mut done: impl FnMut(&EngineView) -> bool) -> bool {
+    fn pump_until(
+        host: &mut EngineHost,
+        timeout: Duration,
+        mut done: impl FnMut(&EngineView) -> bool,
+    ) -> bool {
         let start = Instant::now();
         while start.elapsed() < timeout {
             host.pump();
@@ -367,10 +401,16 @@ mod tests {
         let searched = pump_until(&mut host, Duration::from_secs(20), |v| {
             v.stats.depth.is_some_and(|d| d >= 4) && !v.stats.pv.is_empty()
         });
-        assert!(searched, "engine should reach depth 4 with a principal variation");
+        assert!(
+            searched,
+            "engine should reach depth 4 with a principal variation"
+        );
 
         let view = host.view();
-        assert!(view.name.as_deref().is_some_and(|n| !n.is_empty()), "handshake name");
+        assert!(
+            view.name.as_deref().is_some_and(|n| !n.is_empty()),
+            "handshake name"
+        );
         assert!(view.stats.score.is_some(), "score present on search lines");
         let san = game.uci_moves_to_san(&view.stats.pv);
         assert_eq!(
@@ -390,19 +430,28 @@ mod tests {
         let mut host = EngineHost::attach_with_settings(process, BTreeMap::new());
         let fen = GameState::new().fen();
         host.set_analysis(true, &fen, SearchGoal::Analyse);
-        assert!(pump_until(&mut host, Duration::from_secs(20), |v| v.stats.depth.is_some()));
+        assert!(pump_until(&mut host, Duration::from_secs(20), |v| v
+            .stats
+            .depth
+            .is_some()));
 
         // Abort: stop thinking, keep the engine.
         host.set_analysis(false, &fen, SearchGoal::Analyse);
         assert!(
-            pump_until(&mut host, Duration::from_secs(20), |v| v.status == AnalysisStatus::Ready),
+            pump_until(&mut host, Duration::from_secs(20), |v| v.status
+                == AnalysisStatus::Ready),
             "after Abort the engine must be Ready, not Thinking"
         );
-        assert_ne!(host.view().status, AnalysisStatus::Offline, "Abort must not unload the engine");
+        assert_ne!(
+            host.view().status,
+            AnalysisStatus::Offline,
+            "Abort must not unload the engine"
+        );
 
         // Start again: a fresh search runs.
         host.set_analysis(true, &fen, SearchGoal::Analyse);
-        assert!(pump_until(&mut host, Duration::from_secs(20), |v| v.status == AnalysisStatus::Thinking));
+        assert!(pump_until(&mut host, Duration::from_secs(20), |v| v.status
+            == AnalysisStatus::Thinking));
         host.shutdown().terminate().await.unwrap();
     }
 
@@ -412,18 +461,32 @@ mod tests {
         let process = EngineProcess::spawn(&binary).await.unwrap();
         let mut host = EngineHost::attach_with_settings(process, BTreeMap::new());
         host.set_analysis(true, &GameState::new().fen(), SearchGoal::Analyse);
-        assert!(pump_until(&mut host, Duration::from_secs(20), |v| v.stats.depth.is_some()));
+        assert!(pump_until(&mut host, Duration::from_secs(20), |v| v
+            .stats
+            .depth
+            .is_some()));
 
         let process = host.shutdown();
-        assert_eq!(host.view().status, AnalysisStatus::Offline, "card must read Offline at once");
+        assert_eq!(
+            host.view().status,
+            AnalysisStatus::Offline,
+            "card must read Offline at once"
+        );
         process.terminate().await.unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         while !process.has_exited() && Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        assert!(process.has_exited(), "process must actually exit after quit");
+        assert!(
+            process.has_exited(),
+            "process must actually exit after quit"
+        );
         host.pump();
-        assert_eq!(host.view().status, AnalysisStatus::Offline, "host stays Offline");
+        assert_eq!(
+            host.view().status,
+            AnalysisStatus::Offline,
+            "host stays Offline"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -459,17 +522,25 @@ mod tests {
         settings.insert("Hash".to_string(), "32".to_string());
         let mut host = EngineHost::attach_with_settings(process, settings);
         assert!(
-            pump_until(&mut host, Duration::from_secs(20), |v| v.status == AnalysisStatus::Ready),
+            pump_until(&mut host, Duration::from_secs(20), |v| v.status
+                == AnalysisStatus::Ready),
             "handshake"
         );
-        assert!(host.has_handshaken(), "the ready engine completed its handshake");
+        assert!(
+            host.has_handshaken(),
+            "the ready engine completed its handshake"
+        );
         assert!(
             host.options().iter().any(|option| option.name == "Hash"),
             "the engine must declare the Hash option"
         );
         host.set_option("Hash", "64");
         host.pump();
-        assert_eq!(host.view().status, AnalysisStatus::Ready, "a setoption must not disturb the engine");
+        assert_eq!(
+            host.view().status,
+            AnalysisStatus::Ready,
+            "a setoption must not disturb the engine"
+        );
 
         host.shutdown().terminate().await.unwrap();
     }
@@ -478,14 +549,21 @@ mod tests {
     async fn healthy_engine_answers_pings_while_it_searches() {
         let binary = crate::engine::test_engine_path();
         let process = EngineProcess::spawn(&binary).await.unwrap();
-        let watchdog = Timing { ping_every: Duration::from_millis(50), response_within: Duration::from_secs(3), ..Timing::default() };
+        let watchdog = Timing {
+            ping_every: Duration::from_millis(50),
+            response_within: Duration::from_secs(3),
+            ..Timing::default()
+        };
         let mut host = EngineHost::attach_with(process, watchdog, BTreeMap::new());
         host.set_analysis(true, &GameState::new().fen(), SearchGoal::Analyse);
 
         let until = Instant::now() + Duration::from_millis(1_500);
         while Instant::now() < until {
             host.pump();
-            assert!(!host.is_stalled(), "an engine that searches must still answer isready");
+            assert!(
+                !host.is_stalled(),
+                "an engine that searches must still answer isready"
+            );
             std::thread::sleep(Duration::from_millis(20));
         }
         assert_eq!(host.view().status, AnalysisStatus::Thinking);
@@ -504,10 +582,15 @@ mod tests {
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let process = EngineProcess::spawn(&script).await.unwrap();
-        let watchdog = Timing { ping_every: Duration::from_millis(50), response_within: Duration::from_millis(300), ..Timing::default() };
+        let watchdog = Timing {
+            ping_every: Duration::from_millis(50),
+            response_within: Duration::from_millis(300),
+            ..Timing::default()
+        };
         let mut host = EngineHost::attach_with(process, watchdog, BTreeMap::new());
         assert!(
-            pump_until(&mut host, Duration::from_secs(10), |v| v.status == AnalysisStatus::Ready),
+            pump_until(&mut host, Duration::from_secs(10), |v| v.status
+                == AnalysisStatus::Ready),
             "the mute engine must complete the handshake"
         );
 
@@ -519,7 +602,10 @@ mod tests {
             host.pump();
             std::thread::sleep(Duration::from_millis(20));
         }
-        assert!(host.is_stalled(), "an engine that ignores isready must be reported as stalled");
+        assert!(
+            host.is_stalled(),
+            "an engine that ignores isready must be reported as stalled"
+        );
         assert_eq!(host.binary_path(), script);
 
         host.shutdown().terminate().await.unwrap();
@@ -532,7 +618,10 @@ mod tests {
         let mut host = EngineHost::attach_with_settings(process, BTreeMap::new());
         let mut game = GameState::new();
         host.set_analysis(true, &game.fen(), SearchGoal::Analyse);
-        assert!(pump_until(&mut host, Duration::from_secs(20), |v| v.stats.depth.is_some()));
+        assert!(pump_until(&mut host, Duration::from_secs(20), |v| v
+            .stats
+            .depth
+            .is_some()));
 
         // Black to move after 1.e4: the engine must report the new side's score.
         game.play_squares(
@@ -544,11 +633,17 @@ mod tests {
         host.set_position(&game.fen(), SearchGoal::Analyse);
         assert_eq!(host.view().status, AnalysisStatus::Thinking);
         let retargeted = pump_until(&mut host, Duration::from_secs(20), |v| {
-            v.stats.pv.first().is_some_and(|m| m.len() == 4 && m != "e2e4")
+            v.stats
+                .pv
+                .first()
+                .is_some_and(|m| m.len() == 4 && m != "e2e4")
         });
         assert!(retargeted, "PV must restart for the new position");
         let view = host.view();
-        assert!(matches!(view.stats.score, Some(Score::Cp(_)) | Some(Score::Mate(_))));
+        assert!(matches!(
+            view.stats.score,
+            Some(Score::Cp(_)) | Some(Score::Mate(_))
+        ));
 
         host.shutdown().terminate().await.unwrap();
     }
@@ -577,8 +672,16 @@ mod tests {
         host.set_analysis(true, &fen, goal);
 
         let uci = await_engine_move(&mut host);
-        assert!(game.apply_uci(&uci).is_ok(), "`{}` must be legal in the start position", uci);
-        assert_eq!(host.view().status, AnalysisStatus::Ready, "the move search is over");
+        assert!(
+            game.apply_uci(&uci).is_ok(),
+            "`{}` must be legal in the start position",
+            uci
+        );
+        assert_eq!(
+            host.view().status,
+            AnalysisStatus::Ready,
+            "the move search is over"
+        );
 
         host.shutdown().terminate().await.unwrap();
     }
@@ -603,8 +706,15 @@ mod tests {
         let started = Instant::now();
         let uci = await_engine_move(&mut host);
         let mut replay = game.clone();
-        assert!(replay.apply_uci(&uci).is_ok(), "`{}` must be legal in the start position", uci);
-        assert!(started.elapsed() < Duration::from_secs(10), "3 s on the clock must not take 10 s");
+        assert!(
+            replay.apply_uci(&uci).is_ok(),
+            "`{}` must be legal in the start position",
+            uci
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "3 s on the clock must not take 10 s"
+        );
 
         host.shutdown().terminate().await.unwrap();
     }
@@ -659,7 +769,8 @@ mod tests {
         let path = stop_ignoring_engine(dir.path());
         let process = EngineProcess::spawn(&path).await.unwrap();
         let mut host = EngineHost::attach_with(process, short_deadlines(), BTreeMap::new());
-        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status == AnalysisStatus::Ready));
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status
+            == AnalysisStatus::Ready));
 
         let fen = GameState::new().fen();
         host.set_analysis(true, &fen, SearchGoal::Analyse);
@@ -679,12 +790,19 @@ mod tests {
         let path = stop_ignoring_engine(dir.path());
         let process = EngineProcess::spawn(&path).await.unwrap();
         let mut host = EngineHost::attach_with(process, short_deadlines(), BTreeMap::new());
-        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status == AnalysisStatus::Ready));
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status
+            == AnalysisStatus::Ready));
 
         let fen = GameState::new().fen();
         host.set_analysis(true, &fen, SearchGoal::Move(GoControl::MoveTime(200)));
-        assert_eq!(pump_until_stalled(&mut host), Some(StallReason::MoveNotAnswered));
-        assert!(host.take_engine_move().is_none(), "no move arrives from a stalled search");
+        assert_eq!(
+            pump_until_stalled(&mut host),
+            Some(StallReason::MoveNotAnswered)
+        );
+        assert!(
+            host.take_engine_move().is_none(),
+            "no move arrives from a stalled search"
+        );
         host.shutdown().terminate().await.unwrap();
     }
 
@@ -698,7 +816,8 @@ mod tests {
         );
         let process = EngineProcess::spawn(&path).await.unwrap();
         let mut host = EngineHost::attach_with(process, short_deadlines(), BTreeMap::new());
-        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status == AnalysisStatus::Ready));
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status
+            == AnalysisStatus::Ready));
 
         host.set_analysis(true, &GameState::new().fen(), SearchGoal::Analyse);
         assert_eq!(
@@ -711,8 +830,14 @@ mod tests {
 
     #[test]
     fn stall_reasons_read_as_plain_sentences() {
-        assert_eq!(StallReason::StopNotAnswered.to_string(), "it sent no bestmove after stop");
-        assert_eq!(StallReason::MoveNotAnswered.to_string(), "it sent no move in time");
+        assert_eq!(
+            StallReason::StopNotAnswered.to_string(),
+            "it sent no bestmove after stop"
+        );
+        assert_eq!(
+            StallReason::MoveNotAnswered.to_string(),
+            "it sent no move in time"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -723,15 +848,22 @@ mod tests {
         let path = stop_ignoring_engine(dir.path());
         let process = EngineProcess::spawn(&path).await.unwrap();
         let mut host = EngineHost::attach_with(process, short_deadlines(), BTreeMap::new());
-        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status == AnalysisStatus::Ready));
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status
+            == AnalysisStatus::Ready));
 
         let fen = GameState::new().fen();
         host.set_analysis(true, &fen, SearchGoal::Analyse);
         host.set_analysis(false, &fen, SearchGoal::Analyse);
         std::thread::sleep(Duration::from_secs(2));
-        assert!(host.is_stalled(), "the monitor found the stall without a frame");
+        assert!(
+            host.is_stalled(),
+            "the monitor found the stall without a frame"
+        );
         assert_eq!(host.stall_reason(), Some(StallReason::StopNotAnswered));
-        assert!(!host.has_exited() || host.is_stalled(), "the stalled engine was killed");
+        assert!(
+            !host.has_exited() || host.is_stalled(),
+            "the stalled engine was killed"
+        );
         host.shutdown().terminate().await.unwrap();
     }
 
@@ -744,21 +876,34 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("fast-info.sh");
         let body = "#!/bin/sh\nwhile IFS= read -r line; do\n  case \"$line\" in\n    uci) echo 'id name Fast'; echo uciok;;\n    isready) echo readyok;;\n    go*) i=1; while [ $i -le 300 ]; do echo \"info depth $i score cp $i pv e2e4\"; i=$((i+1)); done; echo 'bestmove e2e4';;\n    quit) exit 0;;\n  esac\ndone\n";
-        std::fs::write(&script, format!("#!/bin/sh\n{}", body.trim_start_matches("#!/bin/sh\n"))).unwrap();
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\n{}", body.trim_start_matches("#!/bin/sh\n")),
+        )
+        .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let process = EngineProcess::spawn(&script).await.unwrap();
         let slot = process.info_slot();
         let mut host = EngineHost::attach_with_settings(process, BTreeMap::new());
-        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status == AnalysisStatus::Ready));
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status
+            == AnalysisStatus::Ready));
 
         host.process
             .try_send(EngineCommand::Go(GoControl::Depth(1)))
             .unwrap();
         std::thread::sleep(Duration::from_secs(1));
-        let merged = slot.lock().unwrap().clone().expect("the info lines were merged");
+        let merged = slot
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("the info lines were merged");
         assert_eq!(merged.depth, Some(300), "the latest depth is kept");
-        assert_eq!(merged.score, Some(Score::Cp(300)), "the latest score is kept");
+        assert_eq!(
+            merged.score,
+            Some(Score::Cp(300)),
+            "the latest score is kept"
+        );
         host.shutdown().terminate().await.unwrap();
     }
 
@@ -772,19 +917,32 @@ mod tests {
         );
         let process = EngineProcess::spawn(&path).await.unwrap();
         let mut host = EngineHost::attach_with_settings(process, BTreeMap::new());
-        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status == AnalysisStatus::Ready));
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.status
+            == AnalysisStatus::Ready));
 
         // Black to move on move 5: the engine's `score cp 45` belongs to this
         // position, so the card must keep Black's turn after the search freezes.
         let fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 5";
         host.set_analysis(true, fen, SearchGoal::Analyse);
-        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v.stats.score.is_some()));
+        assert!(pump_until(&mut host, Duration::from_secs(5), |v| v
+            .stats
+            .score
+            .is_some()));
 
         let view = host.view();
-        assert!(!view.search_white_to_move, "the searched position has Black to move");
-        assert_eq!(view.search_fullmove, 5, "the searched position's move number is kept");
+        assert!(
+            !view.search_white_to_move,
+            "the searched position has Black to move"
+        );
         assert_eq!(
-            crate::gui::eval_panel::white_point_of_view(view.stats.score.unwrap(), view.search_white_to_move),
+            view.search_fullmove, 5,
+            "the searched position's move number is kept"
+        );
+        assert_eq!(
+            crate::gui::eval_panel::white_point_of_view(
+                view.stats.score.unwrap(),
+                view.search_white_to_move
+            ),
             Score::Cp(-45),
             "Black's +45 is -0.45 from White's point of view"
         );

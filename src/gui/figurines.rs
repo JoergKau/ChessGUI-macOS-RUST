@@ -6,8 +6,8 @@
 //! (drawn with that font) and plain runs (body font). Pawn moves and castling
 //! stay plain; a promotion piece after `=` is a figurine too.
 
-use eframe::egui::{self, Color32, FontId, TextFormat, Ui};
 use eframe::egui::text::LayoutJob;
+use eframe::egui::{self, Color32, FontId, TextFormat, Ui};
 
 use crate::gui::theme;
 
@@ -88,9 +88,17 @@ mod tests {
             san_parts("bxa8=Q+"),
             vec![("bxa8=", false), ("Q", true), ("+", false)]
         );
-        assert_eq!(san_parts("O-O"), vec![("O-O", false)], "castling stays text");
+        assert_eq!(
+            san_parts("O-O"),
+            vec![("O-O", false)],
+            "castling stays text"
+        );
         assert_eq!(san_parts("O-O-O"), vec![("O-O-O", false)]);
-        assert_eq!(san_parts("exd5"), vec![("exd5", false)], "a pawn move has no piece letter");
+        assert_eq!(
+            san_parts("exd5"),
+            vec![("exd5", false)],
+            "a pawn move has no piece letter"
+        );
         assert_eq!(san_parts("R1e2"), vec![("R", true), ("1e2", false)]);
         assert_eq!(san_parts("N"), vec![("N", true)]);
         assert!(san_parts("").is_empty());

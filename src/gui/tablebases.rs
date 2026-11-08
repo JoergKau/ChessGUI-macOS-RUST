@@ -4,7 +4,7 @@
 //! Syzygy tablebases live in ordinary folders of `.rtbw` / `.rtbz` files; 5-men
 //! and 6-men files often sit in different folders. Engines take one path
 //! string, with the folders joined by the platform separator (`:` on macOS and
-//! Linux, `;` on Windows — the same rule en-croissant uses). The dialog edits
+//! Linux, `;` on Windows). The dialog edits
 //! that one string; the app sends it to every loaded engine and gives it to
 //! each engine started afterwards. The app applies the string as it is: what
 //! counts as a usable tablebase installation is the engine's business, not the
@@ -35,9 +35,13 @@ const DIALOG_MIN_WIDTH: f32 = 520.0;
 
 /// Separator between tablebase folders in `SyzygyPath`: `;` on Windows,
 /// `:` everywhere else ([UCI spec](https://www.shredderchess.com/chess-features/
-/// chess-software-features/uci-protocol.html), en-croissant `EnginesPage.tsx`).
+/// chess-software-features/uci-protocol.html)).
 pub fn path_separator() -> char {
-    if cfg!(windows) { ';' } else { ':' }
+    if cfg!(windows) {
+        ';'
+    } else {
+        ':'
+    }
 }
 
 /// Join tablebase folders into one `SyzygyPath` value.
@@ -82,8 +86,8 @@ impl TablebaseDialog {
     }
 
     /// Replace the draft with `dirs` joined as one `SyzygyPath` string. Used
-    /// when the folder picker reports its selection; it replaces, not
-    /// extends, the text (as en-croissant's picker does).
+    /// when the folder picker reports its selection; it replaces the text
+    /// rather than extending it.
     pub fn set_draft_dirs<I, P>(&mut self, dirs: I)
     where
         I: IntoIterator<Item = P>,
@@ -176,7 +180,10 @@ mod tests {
     fn the_separator_follows_the_platform() {
         let expected = if cfg!(windows) { ';' } else { ':' };
         assert_eq!(path_separator(), expected);
-        assert_eq!(join_paths(["/a/egtb/5", "/b/egtb/6"]), format!("/a/egtb/5{expected}/b/egtb/6"));
+        assert_eq!(
+            join_paths(["/a/egtb/5", "/b/egtb/6"]),
+            format!("/a/egtb/5{expected}/b/egtb/6")
+        );
     }
 
     #[test]

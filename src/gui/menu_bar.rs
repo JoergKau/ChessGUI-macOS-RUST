@@ -68,6 +68,8 @@ pub enum MenuAction {
     ToggleFigurinesMoveList,
     /// View → Figurines in engine evaluation: toggle `♘f3` in the PV.
     ToggleFigurinesEval,
+    /// View → Analysis arrows: show or hide the engines' best-move arrows.
+    ToggleAnalysisArrows,
     /// Tournament → New tournament…: open the engine-match dialog.
     OpenTournament,
     /// Tournament → Stop tournament: stop the running match.
@@ -116,6 +118,8 @@ pub struct MenuState<'a> {
     pub figurines_move_list: bool,
     /// Whether the engine PV draws piece letters as figurines.
     pub figurines_eval: bool,
+    /// Whether the board shows the engines' best-move arrows.
+    pub analysis_arrows: bool,
     /// Number of moves played, shown in the Game menu.
     pub ply_count: usize,
     /// Whether a tournament is currently playing games.
@@ -174,11 +178,9 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
                 action = Some(MenuAction::NewGame);
                 ui.close();
             }
-            let start_from_fen = ui
-                .button("Start from here…")
-                .on_hover_text(
-                    "Two engines play the position in the FEN field, with the current time control",
-                );
+            let start_from_fen = ui.button("Start from here…").on_hover_text(
+                "Two engines play the position in the FEN field, with the current time control",
+            );
             if start_from_fen.clicked() {
                 action = Some(MenuAction::StartFromFen);
                 ui.close();
@@ -243,7 +245,10 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
                 ui.close();
             }
             ui.separator();
-            ui.add_enabled(false, egui::Button::new(format!("{} half-moves played", state.ply_count)));
+            ui.add_enabled(
+                false,
+                egui::Button::new(format!("{} half-moves played", state.ply_count)),
+            );
         });
         ui.menu_button("File", |ui| {
             if ui.button("Open PGN…").clicked() {
@@ -251,10 +256,7 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
                 ui.close();
             }
             let games = ui
-                .add_enabled(
-                    state.pgn_games_available,
-                    egui::Button::new("PGN games…"),
-                )
+                .add_enabled(state.pgn_games_available, egui::Button::new("PGN games…"))
                 .on_disabled_hover_text("Open a PGN with more than one game first.");
             if games.clicked() {
                 action = Some(MenuAction::ShowPgnGames);
@@ -292,7 +294,10 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
             for slot in 0..2 {
                 let letter = char::from(b'A' + slot as u8);
                 let button = ui
-                    .add_enabled(state.options_ready[slot], egui::Button::new(format!("Engine {} options…", letter)))
+                    .add_enabled(
+                        state.options_ready[slot],
+                        egui::Button::new(format!("Engine {} options…", letter)),
+                    )
                     .on_disabled_hover_text("Available once the engine has started.");
                 if button.clicked() {
                     action = Some(MenuAction::OpenEngineOptions(slot));
@@ -316,12 +321,14 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
                 action = Some(MenuAction::LoadBook);
                 ui.close();
             }
-            let tablebases = ui
-                .button("Load tablebases…")
-                .on_hover_text(match state.tablebase_path {
-                    Some(path) => format!("Change the Syzygy folders (now: {})", path),
-                    None => "Give the engines a Syzygy tablebase folder (SyzygyPath).".to_string(),
-                });
+            let tablebases =
+                ui.button("Load tablebases…")
+                    .on_hover_text(match state.tablebase_path {
+                        Some(path) => format!("Change the Syzygy folders (now: {})", path),
+                        None => {
+                            "Give the engines a Syzygy tablebase folder (SyzygyPath).".to_string()
+                        }
+                    });
             if tablebases.clicked() {
                 action = Some(MenuAction::OpenTablebases);
                 ui.close();
@@ -381,6 +388,17 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
             ui.separator();
             if ui
                 .add(egui::Button::selectable(
+                    state.analysis_arrows,
+                    "Analysis arrows",
+                ))
+                .on_hover_text("Show each engine's best move as an arrow on the board")
+                .clicked()
+            {
+                action = Some(MenuAction::ToggleAnalysisArrows);
+                ui.close();
+            }
+            if ui
+                .add(egui::Button::selectable(
                     state.figurines_move_list,
                     "Figurines in move list",
                 ))
@@ -438,12 +456,20 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
         ui.separator();
         let start = egui::Button::new(RichText::new("Start").color(Color32::BLACK).strong())
             .fill(theme::NEON_GREEN);
-        if ui.add(start).on_hover_text("Analyse the position with every loaded engine").clicked() {
+        if ui
+            .add(start)
+            .on_hover_text("Analyse the position with every loaded engine")
+            .clicked()
+        {
             action = Some(MenuAction::StartAnalysis);
         }
         let stop_searches = egui::Button::new(RichText::new("Stop").color(Color32::WHITE).strong())
             .fill(theme::DANGER_RED);
-        if ui.add(stop_searches).on_hover_text("Stop all searches (engines stay loaded)").clicked() {
+        if ui
+            .add(stop_searches)
+            .on_hover_text("Stop all searches (engines stay loaded)")
+            .clicked()
+        {
             action = Some(MenuAction::StopAnalysis);
         }
 

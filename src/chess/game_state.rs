@@ -213,8 +213,8 @@ impl GameState {
         let parsed_fen = shakmaty::fen::Fen::from_ascii(fen.as_bytes())
             .map_err(|source| FenError::Parse { source })?;
         let setup = parsed_fen.into_setup();
-        let chess = Chess::from_setup(setup, CastlingMode::Standard)
-            .map_err(|source| FenError::Setup {
+        let chess =
+            Chess::from_setup(setup, CastlingMode::Standard).map_err(|source| FenError::Setup {
                 source: Box::new(source),
             })?;
         Ok(Self::from_position(chess))
@@ -303,7 +303,9 @@ impl GameState {
     /// `None` at the start of the game.
     pub fn last_move(&self) -> Option<(Square, Square)> {
         let ply = self.cur_ply.checked_sub(1).map(|i| &self.history[i])?;
-        ply.move_.from().map(|from| (from, target_square(ply.move_)))
+        ply.move_
+            .from()
+            .map(|from| (from, target_square(ply.move_)))
     }
 
     /// Current FEN. Kept until the history or the cursor changes.
@@ -314,7 +316,8 @@ impl GameState {
                 return fen.clone();
             }
         }
-        let fen = shakmaty::fen::Fen::from_position(&self.position(), EnPassantMode::Legal).to_string();
+        let fen =
+            shakmaty::fen::Fen::from_position(&self.position(), EnPassantMode::Legal).to_string();
         *self.fen_memo.borrow_mut() = Some((key.0, key.1, fen.clone()));
         fen
     }
@@ -434,7 +437,11 @@ impl GameState {
         let san = SanPlus::from_move(pos.clone(), m);
         let mut next = pos;
         next.play_unchecked(m);
-        self.append_ply(Ply { move_: m, san, after: next });
+        self.append_ply(Ply {
+            move_: m,
+            san,
+            after: next,
+        });
         Ok(())
     }
 
@@ -482,21 +489,29 @@ impl GameState {
     /// The promotion pieces that are legal for a pawn move `from` → `to`, in
     /// Q/R/B/N order. Empty if the move is not a promotion. The board's
     /// promotion modal renders exactly these choices.
-    #[allow(dead_code, reason = "convenience wrapper for callers without a cached legal-move list")]
+    #[allow(
+        dead_code,
+        reason = "convenience wrapper for callers without a cached legal-move list"
+    )]
     pub fn promotion_choices(&self, from: Square, to: Square) -> Vec<PieceKind> {
         Self::promotion_choices_from(&self.legal_moves_from(from), to)
     }
 
     /// [`Self::promotion_choices`] using an already-computed legal-move list.
     pub fn promotion_choices_from(legal: &[Move], to: Square) -> Vec<PieceKind> {
-        [PieceKind::Queen, PieceKind::Rook, PieceKind::Bishop, PieceKind::Knight]
-            .into_iter()
-            .filter(|kind| {
-                legal.iter().any(|m| {
-                    target_square(*m) == to && m.promotion() == Some(kind.role())
-                })
-            })
-            .collect()
+        [
+            PieceKind::Queen,
+            PieceKind::Rook,
+            PieceKind::Bishop,
+            PieceKind::Knight,
+        ]
+        .into_iter()
+        .filter(|kind| {
+            legal
+                .iter()
+                .any(|m| target_square(*m) == to && m.promotion() == Some(kind.role()))
+        })
+        .collect()
     }
 
     // ── Navigation ───────────────────────────────────────────────────────
@@ -624,7 +639,9 @@ impl GameState {
     /// expect the FEN, while the Phase-2 PolyGlot reader expects this
     /// hash for O(log N) book lookup.
     pub fn zobrist(&self) -> u64 {
-        self.position().zobrist_hash::<Zobrist64>(EnPassantMode::Legal).0
+        self.position()
+            .zobrist_hash::<Zobrist64>(EnPassantMode::Legal)
+            .0
     }
 
     // ── Internal ─────────────────────────────────────────────────────────
@@ -756,9 +773,14 @@ impl Ending {
     pub fn description(self) -> String {
         match self {
             Ending::Resigned { loser } => {
-                format!("{} wins by resignation", piece_color_label_local(loser.opposite()))
+                format!(
+                    "{} wins by resignation",
+                    piece_color_label_local(loser.opposite())
+                )
             }
-            Ending::OnTime { loser } => format!("{} wins on time", piece_color_label_local(loser.opposite())),
+            Ending::OnTime { loser } => {
+                format!("{} wins on time", piece_color_label_local(loser.opposite()))
+            }
             Ending::AdjudicatedWin { winner } => {
                 format!("{} wins by adjudication", piece_color_label_local(winner))
             }
@@ -861,7 +883,10 @@ mod tests {
         assert!(g.board().piece_at(sq("e2")).is_none(), "the pawn left e2");
         assert!(g.board().piece_at(sq("e4")).is_some(), "and stands on e4");
         g.goto_ply(0);
-        assert!(g.board().piece_at(sq("e2")).is_some(), "browsing shows the earlier board");
+        assert!(
+            g.board().piece_at(sq("e2")).is_some(),
+            "browsing shows the earlier board"
+        );
     }
 
     #[test]
@@ -904,8 +929,18 @@ mod tests {
     #[test]
     fn undo_and_redo_round_trip() {
         let mut g = GameState::new();
-        g.play_squares(Square::from_ascii(b"e2").unwrap(), Square::from_ascii(b"e4").unwrap(), None).unwrap();
-        g.play_squares(Square::from_ascii(b"e7").unwrap(), Square::from_ascii(b"e5").unwrap(), None).unwrap();
+        g.play_squares(
+            Square::from_ascii(b"e2").unwrap(),
+            Square::from_ascii(b"e4").unwrap(),
+            None,
+        )
+        .unwrap();
+        g.play_squares(
+            Square::from_ascii(b"e7").unwrap(),
+            Square::from_ascii(b"e5").unwrap(),
+            None,
+        )
+        .unwrap();
         assert_eq!(g.cur_ply(), 2);
 
         assert!(g.undo());
@@ -951,7 +986,12 @@ mod tests {
     #[test]
     fn fen_roundtrips_after_one_move() {
         let mut g = GameState::new();
-        g.play_squares(Square::from_ascii(b"e2").unwrap(), Square::from_ascii(b"e4").unwrap(), None).unwrap();
+        g.play_squares(
+            Square::from_ascii(b"e2").unwrap(),
+            Square::from_ascii(b"e4").unwrap(),
+            None,
+        )
+        .unwrap();
 
         let fen = g.fen();
         let mut parsed = GameState::from_fen(&fen).unwrap();
@@ -976,16 +1016,19 @@ mod tests {
         // And after we apply e7→e5 on the parsed state, the FEN string should
         // match the one we get by applying both moves on g from the start
         // (the round-trip is loss-less).
-        parsed.play_squares(
-            Square::from_ascii(b"e7").unwrap(),
-            Square::from_ascii(b"e5").unwrap(),
-            None,
-        ).unwrap();
+        parsed
+            .play_squares(
+                Square::from_ascii(b"e7").unwrap(),
+                Square::from_ascii(b"e5").unwrap(),
+                None,
+            )
+            .unwrap();
         g.play_squares(
             Square::from_ascii(b"e7").unwrap(),
             Square::from_ascii(b"e5").unwrap(),
             None,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(parsed.fen(), g.fen());
     }
 
@@ -993,10 +1036,30 @@ mod tests {
     fn fools_mate_terminates() {
         // Fool's mate: 1.f3 e5 2.g4 Qh4# — four plies, then checkmate.
         let mut g = GameState::new();
-        g.play_squares(Square::from_ascii(b"f2").unwrap(), Square::from_ascii(b"f3").unwrap(), None).unwrap();
-        g.play_squares(Square::from_ascii(b"e7").unwrap(), Square::from_ascii(b"e5").unwrap(), None).unwrap();
-        g.play_squares(Square::from_ascii(b"g2").unwrap(), Square::from_ascii(b"g4").unwrap(), None).unwrap();
-        g.play_squares(Square::from_ascii(b"d8").unwrap(), Square::from_ascii(b"h4").unwrap(), None).unwrap();
+        g.play_squares(
+            Square::from_ascii(b"f2").unwrap(),
+            Square::from_ascii(b"f3").unwrap(),
+            None,
+        )
+        .unwrap();
+        g.play_squares(
+            Square::from_ascii(b"e7").unwrap(),
+            Square::from_ascii(b"e5").unwrap(),
+            None,
+        )
+        .unwrap();
+        g.play_squares(
+            Square::from_ascii(b"g2").unwrap(),
+            Square::from_ascii(b"g4").unwrap(),
+            None,
+        )
+        .unwrap();
+        g.play_squares(
+            Square::from_ascii(b"d8").unwrap(),
+            Square::from_ascii(b"h4").unwrap(),
+            None,
+        )
+        .unwrap();
         assert!(g.is_checkmate(), "expected checkmate, got FEN {}", g.fen());
         assert_eq!(g.outcome(), "Black wins by checkmate");
     }
@@ -1025,13 +1088,16 @@ mod tests {
             Square::from_ascii(b"a7").unwrap(),
             Square::from_ascii(b"a8").unwrap(),
             Some(PieceKind::Queen),
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     #[test]
     fn fen_parse_rejects_garbage() {
         // Standard starting position — legal.
-        assert!(GameState::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").is_ok());
+        assert!(
+            GameState::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").is_ok()
+        );
         // Empty board is *illegal* (no kings).
         assert!(GameState::from_fen("8/8/8/8/8/8/8/8 w - - 0 1").is_err());
         // Bogus inputs:
@@ -1060,8 +1126,18 @@ mod tests {
     fn last_move_follows_the_history_cursor() {
         let mut g = GameState::new();
         assert_eq!(g.last_move(), None);
-        g.play_squares(Square::from_ascii(b"e2").unwrap(), Square::from_ascii(b"e4").unwrap(), None).unwrap();
-        g.play_squares(Square::from_ascii(b"e7").unwrap(), Square::from_ascii(b"e5").unwrap(), None).unwrap();
+        g.play_squares(
+            Square::from_ascii(b"e2").unwrap(),
+            Square::from_ascii(b"e4").unwrap(),
+            None,
+        )
+        .unwrap();
+        g.play_squares(
+            Square::from_ascii(b"e7").unwrap(),
+            Square::from_ascii(b"e5").unwrap(),
+            None,
+        )
+        .unwrap();
         assert_eq!(g.last_move(), Some((sq("e7"), sq("e5"))));
         g.undo();
         assert_eq!(g.last_move(), Some((sq("e2"), sq("e4"))));
@@ -1071,7 +1147,8 @@ mod tests {
 
     #[test]
     fn castling_last_move_reports_king_destination() {
-        let mut g = GameState::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1").unwrap();
+        let mut g =
+            GameState::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1").unwrap();
         g.play_squares(sq("e1"), sq("g1"), None).unwrap();
         assert_eq!(g.last_move(), Some((sq("e1"), sq("g1"))));
     }
@@ -1089,7 +1166,10 @@ mod tests {
     #[test]
     fn uci_line_stops_at_the_first_illegal_move() {
         let g = GameState::new();
-        let pv: Vec<String> = ["e2e4", "e2e5", "g1f3"].iter().map(|s| s.to_string()).collect();
+        let pv: Vec<String> = ["e2e4", "e2e5", "g1f3"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(g.uci_moves_to_san(&pv), vec!["e4"]);
     }
 
@@ -1113,11 +1193,16 @@ mod tests {
 
     #[test]
     fn apply_uci_accepts_castling_and_promotion() {
-        let mut g = GameState::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1").unwrap();
+        let mut g =
+            GameState::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1").unwrap();
         assert_eq!(g.apply_uci("e1g1").as_deref(), Ok("O-O"));
 
         let mut g = GameState::from_fen("7k/P7/8/8/8/8/8/7K w - - 0 1").unwrap();
-        assert_eq!(g.apply_uci("a7a8"), Err(MoveError::IllegalMove), "a promotion needs a piece");
+        assert_eq!(
+            g.apply_uci("a7a8"),
+            Err(MoveError::IllegalMove),
+            "a promotion needs a piece"
+        );
         assert_eq!(g.apply_uci("a7a8q").as_deref(), Ok("a8=Q+"));
     }
 
@@ -1137,7 +1222,9 @@ mod tests {
     #[test]
     fn finished_positions_can_be_loaded_for_inspection() {
         // Fool's mate final position: loadable, and reported as checkmate.
-        let g = GameState::from_fen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3").unwrap();
+        let g =
+            GameState::from_fen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
+                .unwrap();
         assert!(g.is_checkmate());
         assert_eq!(g.outcome(), "Black wins by checkmate");
     }
@@ -1146,7 +1233,10 @@ mod tests {
     fn book_suggestions_list_the_books_start_moves() {
         let book = crate::chess::opening_book::sample_start_book();
         let suggestions = GameState::new().book_suggestions(&book);
-        assert!(!suggestions.is_empty(), "start position must have book moves");
+        assert!(
+            !suggestions.is_empty(),
+            "start position must have book moves"
+        );
         // Every suggestion must be a legal SAN move of the start position.
         for (san, _) in &suggestions {
             assert!(
@@ -1156,7 +1246,10 @@ mod tests {
             );
         }
         let weights: Vec<u16> = suggestions.iter().map(|(_, w)| *w).collect();
-        assert!(weights.windows(2).all(|pair| pair[0] >= pair[1]), "heaviest first");
+        assert!(
+            weights.windows(2).all(|pair| pair[0] >= pair[1]),
+            "heaviest first"
+        );
     }
 
     #[test]
@@ -1173,24 +1266,84 @@ mod tests {
 
     #[test]
     fn endings_give_their_pgn_result_and_text() {
-        assert_eq!(Ending::Resigned { loser: PieceColor::Black }.result_token(), "1-0");
-        assert_eq!(Ending::OnTime { loser: PieceColor::White }.result_token(), "0-1");
+        assert_eq!(
+            Ending::Resigned {
+                loser: PieceColor::Black
+            }
+            .result_token(),
+            "1-0"
+        );
+        assert_eq!(
+            Ending::OnTime {
+                loser: PieceColor::White
+            }
+            .result_token(),
+            "0-1"
+        );
         assert_eq!(Ending::DrawAgreed.result_token(), "1/2-1/2");
         assert_eq!(Ending::ThreefoldRepetition.result_token(), "1/2-1/2");
         assert_eq!(Ending::FiftyMoveRule.result_token(), "1/2-1/2");
-        assert_eq!(Ending::AdjudicatedWin { winner: PieceColor::White }.result_token(), "1-0");
+        assert_eq!(
+            Ending::AdjudicatedWin {
+                winner: PieceColor::White
+            }
+            .result_token(),
+            "1-0"
+        );
         assert_eq!(Ending::AdjudicatedDraw.result_token(), "1/2-1/2");
-        assert_eq!(Ending::FromPgn { winner: Some(PieceColor::Black) }.result_token(), "0-1");
+        assert_eq!(
+            Ending::FromPgn {
+                winner: Some(PieceColor::Black)
+            }
+            .result_token(),
+            "0-1"
+        );
         assert_eq!(Ending::FromPgn { winner: None }.result_token(), "1/2-1/2");
-        assert_eq!(Ending::Resigned { loser: PieceColor::White }.description(), "Black wins by resignation");
-        assert_eq!(Ending::OnTime { loser: PieceColor::Black }.description(), "White wins on time");
-        assert_eq!(Ending::AdjudicatedWin { winner: PieceColor::Black }.description(), "Black wins by adjudication");
-        assert_eq!(Ending::AdjudicatedDraw.description(), "Draw by adjudication");
-        assert_eq!(Ending::FromPgn { winner: Some(PieceColor::White) }.description(), "White won (from PGN)");
-        assert_eq!(Ending::FromPgn { winner: None }.description(), "Draw (from PGN)");
+        assert_eq!(
+            Ending::Resigned {
+                loser: PieceColor::White
+            }
+            .description(),
+            "Black wins by resignation"
+        );
+        assert_eq!(
+            Ending::OnTime {
+                loser: PieceColor::Black
+            }
+            .description(),
+            "White wins on time"
+        );
+        assert_eq!(
+            Ending::AdjudicatedWin {
+                winner: PieceColor::Black
+            }
+            .description(),
+            "Black wins by adjudication"
+        );
+        assert_eq!(
+            Ending::AdjudicatedDraw.description(),
+            "Draw by adjudication"
+        );
+        assert_eq!(
+            Ending::FromPgn {
+                winner: Some(PieceColor::White)
+            }
+            .description(),
+            "White won (from PGN)"
+        );
+        assert_eq!(
+            Ending::FromPgn { winner: None }.description(),
+            "Draw (from PGN)"
+        );
         assert_eq!(Ending::DrawAgreed.description(), "Draw agreed");
-        assert_eq!(Ending::ThreefoldRepetition.description(), "Draw by repetition");
-        assert_eq!(Ending::FiftyMoveRule.description(), "Draw by the fifty-move rule");
+        assert_eq!(
+            Ending::ThreefoldRepetition.description(),
+            "Draw by repetition"
+        );
+        assert_eq!(
+            Ending::FiftyMoveRule.description(),
+            "Draw by the fifty-move rule"
+        );
     }
 
     #[test]
@@ -1201,31 +1354,51 @@ mod tests {
         let lines = g.pgn_lines();
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].number, 1);
-        assert_eq!(lines[0].white.as_ref().map(|m| (m.ply, m.san.as_str())), Some((1, "e4")));
-        assert_eq!(lines[0].black.as_ref().map(|m| (m.ply, m.san.as_str())), Some((2, "e5")));
+        assert_eq!(
+            lines[0].white.as_ref().map(|m| (m.ply, m.san.as_str())),
+            Some((1, "e4"))
+        );
+        assert_eq!(
+            lines[0].black.as_ref().map(|m| (m.ply, m.san.as_str())),
+            Some((2, "e5"))
+        );
     }
 
     #[test]
     fn move_list_starting_with_black_to_move_numbers_from_the_fen() {
         // Black to move at move 12: the first line has no White move, and
         // the numbering continues from the FEN.
-        let mut g = GameState::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 12").unwrap();
+        let mut g =
+            GameState::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 12")
+                .unwrap();
         g.play_squares(sq("c7"), sq("c5"), None).unwrap();
         g.play_squares(sq("g1"), sq("f3"), None).unwrap();
         let lines = g.pgn_lines();
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].number, 12);
         assert!(lines[0].white.is_none());
-        assert_eq!(lines[0].black.as_ref().map(|m| (m.ply, m.san.as_str())), Some((1, "c5")));
+        assert_eq!(
+            lines[0].black.as_ref().map(|m| (m.ply, m.san.as_str())),
+            Some((1, "c5"))
+        );
         assert_eq!(lines[1].number, 13);
-        assert_eq!(lines[1].white.as_ref().map(|m| (m.ply, m.san.as_str())), Some((2, "Nf3")));
+        assert_eq!(
+            lines[1].white.as_ref().map(|m| (m.ply, m.san.as_str())),
+            Some((2, "Nf3"))
+        );
         assert!(lines[1].black.is_none());
     }
 
     #[test]
     fn move_list_keeps_moves_after_the_cursor() {
         let mut g = GameState::new();
-        for (from, to) in [("e2", "e4"), ("e7", "e5"), ("g1", "f3"), ("b8", "c6"), ("f1", "b5")] {
+        for (from, to) in [
+            ("e2", "e4"),
+            ("e7", "e5"),
+            ("g1", "f3"),
+            ("b8", "c6"),
+            ("f1", "b5"),
+        ] {
             g.play_squares(sq(from), sq(to), None).unwrap();
         }
         g.goto_ply(2);

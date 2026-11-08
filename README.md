@@ -1,12 +1,12 @@
 # SiliconBoard
 
-A native **macOS (Apple Silicon) UCI chess GUI** written in Rust. The layout
-takes its cues from the Nibbler analysis GUI: board on the left, live engine
-analysis on the right, move list along the bottom, and a flat toolbar across
-the top.
+A native **macOS (Apple Silicon) UCI chess GUI** written in Rust. Board on the
+left, live engine analysis on the right, the move list along the bottom, and a
+flat toolbar across the top.
 
 - **Analysis:** two engine slots with live depth, nodes, speed, evaluation
-  and principal variation; Start / Abort; per-card play/pause. Each card's
+  and principal variation; a best-move arrow on the board for each engine
+  (green for A, red for B); Start / Abort; per-card play/pause. Each card's
   engine name is a pulldown of the known engines (loaded A/B and the engines
   used before, remembered across launches, the same list as the tournament
   window) with Browse….
@@ -25,7 +25,7 @@ the top.
   figurine piece letters, persistent settings, a session log.
 
 A short summary of what SiliconBoard does lives in
-[features-list.md](features-list.md); what ships in v1.0 is in
+[features-list.md](features-list.md); what ships in v1.0.1 is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## The ready-to-run app
@@ -33,11 +33,11 @@ A short summary of what SiliconBoard does lives in
 The repository contains the built, signed app:
 
 ```
-SiliconBoard-1.0.0-macos-arm64.zip
+SiliconBoard-1.0.1-macos-arm64.zip
 ```
 
 It is the same bundle the packaging script produces — one folder
-(`SiliconBoard-1.0.0/`) holding `SiliconBoard.app`, `LICENSE` and this
+(`SiliconBoard-1.0.1/`) holding `SiliconBoard.app`, `LICENSE` and this
 README — and it is **committed to the repository**, so no build is needed to
 run SiliconBoard. It is for macOS on Apple Silicon.
 
@@ -57,7 +57,7 @@ The SHA-256 of the zip is printed by `./package-macos.sh` when it rebuilds
 the app and is listed with each release; check a download with:
 
 ```shell
-shasum -a 256 SiliconBoard-1.0.0-macos-arm64.zip
+shasum -a 256 SiliconBoard-1.0.1-macos-arm64.zip
 ```
 
 ## Requirements

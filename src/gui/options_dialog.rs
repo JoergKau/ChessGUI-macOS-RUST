@@ -3,9 +3,9 @@
 //! [`OptionsAction`], and the app sends it to the engine. The dialog holds
 //! only the values it shows.
 //!
-//! The layout follows the settings page in en-croissant: dashed section
-//! headings, labels above their fields, and a two-column grid so an engine
-//! with a dozen options reads as a page instead of a long list.
+//! The layout uses dashed section headings, labels above their fields, and a
+//! two-column grid so an engine with a dozen options reads as a page instead
+//! of a long list.
 
 use std::collections::BTreeMap;
 
@@ -391,7 +391,8 @@ impl OptionsDialog {
                 let text = self.values.entry(name.clone()).or_default();
                 let id = ui.make_persistent_id(("engine_option", &name));
                 let selection = crate::gui::text_field::selection_before(ui, id);
-                let response = ui.add_sized([width, FIELD_HEIGHT], TextEdit::singleline(text).id(id));
+                let response =
+                    ui.add_sized([width, FIELD_HEIGHT], TextEdit::singleline(text).id(id));
                 crate::gui::text_field::after_edit(ui, id, text, selection, &response);
                 // A text value is sent when the field is left (or Enter is pressed), not on every key.
                 if response.lost_focus() {
@@ -515,8 +516,8 @@ fn spin_speed(min: i64, max: i64) -> f64 {
     }
 }
 
-/// A dashed rule with its label in the middle, like en-croissant's section
-/// headings. Shared with the tournament dialog so both pages read alike.
+/// A dashed rule with its label in the middle. Shared with the tournament
+/// dialog so both pages read alike.
 pub(crate) fn section_heading(ui: &mut Ui, title: &str) {
     ui.add_space(6.0);
     let width = ui.available_width();

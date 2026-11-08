@@ -8,7 +8,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use eframe::egui::{self, Align, Align2, Color32, FontId, Layout, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui, Vec2};
+use eframe::egui::{
+    self, Align, Align2, Color32, FontId, Layout, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui,
+    Vec2,
+};
 
 use crate::app::StatusLevel;
 use crate::engine::{AnalysisStatus, EngineView, Score};
@@ -122,7 +125,11 @@ pub fn show(ui: &mut Ui, summary: &EvalSummary) -> Option<MenuAction> {
             StatusLevel::Error => theme::DANGER_RED,
         };
         let text = RichText::new(&summary.status).small().color(color);
-        let text = if summary.status_level == StatusLevel::Info { text } else { text.strong() };
+        let text = if summary.status_level == StatusLevel::Info {
+            text
+        } else {
+            text.strong()
+        };
         ui.label(text);
     });
     requested
@@ -164,7 +171,11 @@ fn engine_card(
                 if toggle_button(ui, card.running, toggle_enabled, disabled_hint) {
                     action = Some(MenuAction::ToggleEngine(card.slot));
                 }
-                ui.label(RichText::new(letter.to_string()).small().color(theme::MUTED));
+                ui.label(
+                    RichText::new(letter.to_string())
+                        .small()
+                        .color(theme::MUTED),
+                );
                 let spacing = ui.spacing().item_spacing.x;
                 let name_width = if live {
                     (ui.available_width()
@@ -181,7 +192,10 @@ fn engine_card(
                 engine_choice_combo(ui, card, choices, name_width, &mut action);
                 if let Some(view) = card.view.as_ref().filter(|_| live) {
                     speed_pill(ui, view);
-                    let white_score = view.stats.score.map(|s| white_point_of_view(s, search_white_to_move));
+                    let white_score = view
+                        .stats
+                        .score
+                        .map(|s| white_point_of_view(s, search_white_to_move));
                     let depth = view
                         .stats
                         .depth
@@ -206,13 +220,21 @@ fn engine_card(
             };
 
             ui.add_space(6.0);
-            let (rule, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 2.0), Sense::hover());
+            let (rule, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), 2.0), Sense::hover());
             ui.painter().rect_filled(rule, 1.0, theme::BLUE);
             ui.add_space(6.0);
 
-            let white_score = view.stats.score.map(|s| white_point_of_view(s, search_white_to_move));
+            let white_score = view
+                .stats
+                .score
+                .map(|s| white_point_of_view(s, search_white_to_move));
             let badge = white_score.map_or_else(|| "--".to_string(), format_score_white);
-            let tokens = number_pv(search_fullmove, search_white_to_move, card.pv_san.as_slice());
+            let tokens = number_pv(
+                search_fullmove,
+                search_white_to_move,
+                card.pv_san.as_slice(),
+            );
             ui.horizontal_top(|ui| {
                 score_badge(ui, &badge);
                 ui.add_space(4.0);
@@ -261,7 +283,9 @@ fn engine_choice_combo(
 }
 
 fn engine_name(view: &EngineView) -> String {
-    view.name.clone().unwrap_or_else(|| view.binary_name.clone())
+    view.name
+        .clone()
+        .unwrap_or_else(|| view.binary_name.clone())
 }
 
 /// Second line of the header: the speed as a dark pill while the engine
@@ -275,7 +299,12 @@ fn speed_pill(ui: &mut Ui, view: &EngineView) {
                 .corner_radius(4.0)
                 .inner_margin(3.0)
                 .show(ui, |ui| {
-                    ui.label(RichText::new(nps).monospace().small().color(theme::NEON_GREEN));
+                    ui.label(
+                        RichText::new(nps)
+                            .monospace()
+                            .small()
+                            .color(theme::NEON_GREEN),
+                    );
                 });
         }
         AnalysisStatus::Starting => {
@@ -292,7 +321,11 @@ fn speed_pill(ui: &mut Ui, view: &EngineView) {
 /// running, play while it is stopped. Returns `true` when clicked; a disabled
 /// button never reports a click, and its tooltip gives `disabled_hint`.
 fn toggle_button(ui: &mut Ui, running: bool, enabled: bool, disabled_hint: &str) -> bool {
-    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let sense = if enabled {
+        Sense::click()
+    } else {
+        Sense::hover()
+    };
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(30.0), sense);
     let (fill, ink) = match (enabled, running) {
         (false, _) => (theme::BAR_BLACK, theme::MUTED),
@@ -334,7 +367,8 @@ fn metrics_width() -> f32 {
 /// The block is painted at fixed positions, so the three columns always share
 /// one top line.
 fn metrics_block(ui: &mut Ui, eval: &str, depth: &str, nodes: &str) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(metrics_width(), METRIC_HEIGHT), Sense::hover());
+    let (rect, _) =
+        ui.allocate_exact_size(Vec2::new(metrics_width(), METRIC_HEIGHT), Sense::hover());
     let painter = ui.painter();
     let columns = [
         ("EVAL", eval, theme::NEON_GREEN),
@@ -367,7 +401,12 @@ fn score_badge(ui: &mut Ui, text: &str) {
         .corner_radius(4.0)
         .inner_margin(6.0)
         .show(ui, |ui| {
-            ui.label(RichText::new(text).monospace().strong().color(Color32::BLACK));
+            ui.label(
+                RichText::new(text)
+                    .monospace()
+                    .strong()
+                    .color(Color32::BLACK),
+            );
         });
 }
 
@@ -386,7 +425,13 @@ fn pv_flow(ui: &mut Ui, tokens: &[String], figurines: bool) {
             .get(&egui::TextStyle::Small)
             .cloned()
             .unwrap_or_else(|| FontId::proportional(12.0));
-        ui.painter().text(rect.left_top(), Align2::LEFT_TOP, "PV: --", small, theme::MUTED);
+        ui.painter().text(
+            rect.left_top(),
+            Align2::LEFT_TOP,
+            "PV: --",
+            small,
+            theme::MUTED,
+        );
         return;
     }
     let job = pv_job(ui, tokens, figurines);
@@ -414,10 +459,7 @@ fn pv_row_height(ui: &Ui) -> f32 {
     let mut job = egui::text::LayoutJob::default();
     job.wrap.max_width = f32::INFINITY;
     crate::gui::figurines::append_san(&mut job, "AgN", &body, theme::TEXT, true);
-    ui.ctx()
-        .fonts_mut(|fonts| fonts.layout_job(job))
-        .size()
-        .y
+    ui.ctx().fonts_mut(|fonts| fonts.layout_job(job)).size().y
 }
 
 /// Lay the PV out as one wrapped text job, truncated after [`PV_LINES`] rows.
@@ -436,10 +478,18 @@ fn pv_job(ui: &Ui, tokens: &[String], figurines: bool) -> egui::text::LayoutJob 
     job.wrap.overflow_character = Some('…');
     for (index, token) in tokens.iter().enumerate() {
         if index > 0 {
-            job.append(" ", 0.0, egui::TextFormat::simple(body.clone(), theme::MUTED));
+            job.append(
+                " ",
+                0.0,
+                egui::TextFormat::simple(body.clone(), theme::MUTED),
+            );
         }
         if token.ends_with('.') {
-            job.append(token, 0.0, egui::TextFormat::simple(body.clone(), theme::MUTED));
+            job.append(
+                token,
+                0.0,
+                egui::TextFormat::simple(body.clone(), theme::MUTED),
+            );
             continue;
         }
         crate::gui::figurines::append_san(&mut job, token, &body, theme::TEXT, figurines);
@@ -570,10 +620,7 @@ mod tests {
     #[test]
     fn score_is_shown_from_whites_point_of_view() {
         // Black to move and Black is better by 45 cp: White sees -0.45.
-        assert_eq!(
-            white_point_of_view(Score::Cp(45), false),
-            Score::Cp(-45)
-        );
+        assert_eq!(white_point_of_view(Score::Cp(45), false), Score::Cp(-45));
         assert_eq!(white_point_of_view(Score::Cp(45), true), Score::Cp(45));
         assert_eq!(white_point_of_view(Score::Mate(3), false), Score::Mate(-3));
     }
@@ -642,7 +689,9 @@ mod tests {
             ui.set_width(120.0);
             let words: Vec<String> = (1..=40).map(|i| format!("Nf{}", i % 8)).collect();
             let tokens = number_pv(1, true, &words);
-            let galley = ui.ctx().fonts_mut(|fonts| fonts.layout_job(pv_job(ui, &tokens, false)));
+            let galley = ui
+                .ctx()
+                .fonts_mut(|fonts| fonts.layout_job(pv_job(ui, &tokens, false)));
             rows = galley.rows.len();
             elided = galley.elided;
         });

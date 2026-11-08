@@ -17,7 +17,14 @@ use std::path::{Path, PathBuf};
 use crate::engine::protocol::EngineError;
 
 /// Folders an engine may need on `PATH` that a Finder launch does not have.
-const TOOL_FOLDERS: [&str; 6] = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+const TOOL_FOLDERS: [&str; 6] = [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/usr/sbin",
+    "/sbin",
+];
 
 /// How many recent stderr lines are kept for a failure report.
 const STDERR_KEPT: usize = 5;
@@ -97,7 +104,10 @@ fn check_interpreter(head: &[u8]) -> Result<(), String> {
     let interpreter = words
         .next()
         .ok_or_else(|| "the script's #! line is empty".to_string())?;
-    let program = if Path::new(interpreter).file_name().is_some_and(|name| name == "env") {
+    let program = if Path::new(interpreter)
+        .file_name()
+        .is_some_and(|name| name == "env")
+    {
         words
             .find(|word| !word.starts_with('-'))
             .ok_or_else(|| "the script's #! line names no program after env".to_string())?
@@ -113,14 +123,18 @@ fn check_interpreter(head: &[u8]) -> Result<(), String> {
     } else if find_on_engine_path(program).is_some() {
         Ok(())
     } else {
-        Err(format!("the script runs {program}, which is not on the engine's search path"))
+        Err(format!(
+            "the script runs {program}, which is not on the engine's search path"
+        ))
     }
 }
 
 /// The first bytes of a file, enough to recognise its kind.
 fn read_head(binary: &Path) -> std::io::Result<Vec<u8>> {
     let mut head = Vec::with_capacity(512);
-    std::fs::File::open(binary)?.take(512).read_to_end(&mut head)?;
+    std::fs::File::open(binary)?
+        .take(512)
+        .read_to_end(&mut head)?;
     Ok(head)
 }
 
@@ -205,17 +219,31 @@ mod tests {
         let err = check_executable(&jar).unwrap_err().to_string();
         assert!(err.contains("Java archive"), "{err}");
         let linux = write_file(dir.path(), "engine-linux", b"\x7fELF\x02\x01", 0o755);
-        assert!(check_executable(&linux).unwrap_err().to_string().contains("Linux program"));
+        assert!(check_executable(&linux)
+            .unwrap_err()
+            .to_string()
+            .contains("Linux program"));
         let windows = write_file(dir.path(), "engine.exe", b"MZ\x90\x00", 0o755);
-        assert!(check_executable(&windows).unwrap_err().to_string().contains("Windows program"));
+        assert!(check_executable(&windows)
+            .unwrap_err()
+            .to_string()
+            .contains("Windows program"));
         let text = write_file(dir.path(), "notes", b"just words\n", 0o755);
-        assert!(check_executable(&text).unwrap_err().to_string().contains("not a program"));
+        assert!(check_executable(&text)
+            .unwrap_err()
+            .to_string()
+            .contains("not a program"));
     }
 
     #[test]
     fn a_script_whose_interpreter_is_missing_is_refused_with_its_name() {
         let dir = tempfile::tempdir().unwrap();
-        let script = write_file(dir.path(), "wrapper.sh", b"#!/opt/nowhere/python\nprint(1)\n", 0o755);
+        let script = write_file(
+            dir.path(),
+            "wrapper.sh",
+            b"#!/opt/nowhere/python\nprint(1)\n",
+            0o755,
+        );
         let err = check_executable(&script).unwrap_err().to_string();
         assert!(err.contains("/opt/nowhere/python"), "{err}");
     }
@@ -224,9 +252,20 @@ mod tests {
     fn a_script_started_through_env_needs_its_program_on_the_path() {
         let dir = tempfile::tempdir().unwrap();
         let script = write_file(dir.path(), "env.sh", b"#!/usr/bin/env sh\necho hi\n", 0o755);
-        assert!(check_executable(&script).is_ok(), "sh is on every engine path");
-        let missing = write_file(dir.path(), "missing.sh", b"#!/usr/bin/env no-such-engine-tool\n", 0o755);
-        assert!(check_executable(&missing).unwrap_err().to_string().contains("no-such-engine-tool"));
+        assert!(
+            check_executable(&script).is_ok(),
+            "sh is on every engine path"
+        );
+        let missing = write_file(
+            dir.path(),
+            "missing.sh",
+            b"#!/usr/bin/env no-such-engine-tool\n",
+            0o755,
+        );
+        assert!(check_executable(&missing)
+            .unwrap_err()
+            .to_string()
+            .contains("no-such-engine-tool"));
     }
 
     #[test]
@@ -241,7 +280,10 @@ mod tests {
         assert!(folders.contains(&PathBuf::from("/opt/homebrew/bin")));
         assert!(folders.contains(&PathBuf::from("/usr/bin")));
         for tool in TOOL_FOLDERS {
-            let count = folders.iter().filter(|folder| folder.as_os_str() == tool).count();
+            let count = folders
+                .iter()
+                .filter(|folder| folder.as_os_str() == tool)
+                .count();
             assert!(count <= 1, "{tool} is listed {count} times");
         }
     }
@@ -255,7 +297,13 @@ mod tests {
         }
         diagnostics.note_exit("exit status: 127".to_string());
         let summary = diagnostics.summary();
-        assert!(summary.starts_with("exit status: 127; last message: line 6"), "{summary}");
-        assert!(!diagnostics.stderr.iter().any(|line| line == "line 0"), "only the newest lines are kept");
+        assert!(
+            summary.starts_with("exit status: 127; last message: line 6"),
+            "{summary}"
+        );
+        assert!(
+            !diagnostics.stderr.iter().any(|line| line == "line 0"),
+            "only the newest lines are kept"
+        );
     }
 }

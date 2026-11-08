@@ -38,12 +38,18 @@ pub fn show(
         if ui.button(">").on_hover_text("Next move (→)").clicked() {
             game.redo();
         }
-        if ui.button(">|").on_hover_text("Latest position (End)").clicked() {
+        if ui
+            .button(">|")
+            .on_hover_text("Latest position (End)")
+            .clicked()
+        {
             game.goto_end();
         }
         let browsing = game.cur_ply() != game.total_plies();
         if browsing {
-            ui.label(RichText::new("browsing history — board is read-only").color(theme::ALERT_YELLOW));
+            ui.label(
+                RichText::new("browsing history — board is read-only").color(theme::ALERT_YELLOW),
+            );
         }
     });
 
@@ -63,7 +69,10 @@ pub fn show(
                         format!("{}...", line.number)
                     };
                     ui.label(RichText::new(number).color(theme::MUTED).monospace());
-                    let moves = [(&line.white, theme::WHITE_MOVE), (&line.black, theme::BLACK_MOVE)];
+                    let moves = [
+                        (&line.white, theme::WHITE_MOVE),
+                        (&line.black, theme::BLACK_MOVE),
+                    ];
                     for (entry, color) in moves {
                         let Some(entry) = entry else { continue };
                         let response = match galleys.get(entry.ply).and_then(|g| g.as_ref()) {
@@ -95,7 +104,9 @@ pub fn show(
                 }
             });
             if lines.is_empty() {
-                ui.label(RichText::new("No moves yet — play one on the board.").color(theme::MUTED));
+                ui.label(
+                    RichText::new("No moves yet — play one on the board.").color(theme::MUTED),
+                );
             }
         });
 
@@ -134,8 +145,7 @@ pub fn show_game_list_panel(
     // Title strip: collection name and game count on the left, Close on the
     // right.
     let bar_width = ui.available_width();
-    let (bar_rect, _) =
-        ui.allocate_exact_size(egui::vec2(bar_width, 38.0), egui::Sense::hover());
+    let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_width, 38.0), egui::Sense::hover());
     ui.painter().rect_filled(bar_rect, 0.0, theme::TOOLBAR_BG);
     let inner = bar_rect.shrink2(egui::vec2(8.0, 6.0));
     ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
@@ -325,8 +335,7 @@ fn paint_list_row(
 }
 
 #[cfg(test)]
-static LAST_LIST_WIDTH: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(0);
+static LAST_LIST_WIDTH: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 #[cfg(test)]
 mod tests {
@@ -350,7 +359,10 @@ mod tests {
         let white = game.pgn_lines()[0].white.clone().unwrap();
         game.goto_ply(white.ply);
         assert_eq!(game.cur_ply(), 1);
-        assert_eq!(game.last_move().map(|(from, _)| from.to_string()), Some("e2".into()));
+        assert_eq!(
+            game.last_move().map(|(from, _)| from.to_string()),
+            Some("e2".into())
+        );
     }
 
     #[test]

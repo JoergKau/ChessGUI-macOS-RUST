@@ -29,8 +29,8 @@ const COPYRIGHT: &str = "Copyright © 2026 JoKa. MIT License.";
 const APP_NAME: &str = "SiliconBoard";
 
 /// Application version shown in the About panel.
-/// Shown as "SiliconBoard 1.0" in the About panel.
-const APP_VERSION: &str = "1.0";
+/// Shown as "SiliconBoard 1.0.1" in the About panel.
+const APP_VERSION: &str = "1.0.1";
 
 /// Credits block: two project lines, plus the copyright when the binary runs
 /// without a bundle (`cargo run`), where `Info.plist` cannot supply it.
@@ -60,7 +60,7 @@ mod imp {
     use objc2::ffi::{class_getInstanceMethod, method_setImplementation};
     use objc2::rc::Retained;
     use objc2::runtime::{AnyClass, AnyObject, Imp, Method, Sel};
-    use objc2::{Message, class, msg_send};
+    use objc2::{class, msg_send, Message};
     use objc2_app_kit::{
         NSAboutPanelOptionApplicationIcon, NSAboutPanelOptionApplicationName,
         NSAboutPanelOptionCredits, NSAboutPanelOptionVersion, NSImage, NSMutableParagraphStyle,

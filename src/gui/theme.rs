@@ -1,5 +1,5 @@
-//! Dark, high-contrast palette in the spirit of Nibbler: near-black panels,
-//! neon green for evaluations, neon cyan for search metrics.
+//! Dark, high-contrast analysis palette: near-black panels, neon green for
+//! evaluations, neon cyan for search metrics.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,6 +41,12 @@ pub const BLACK_MOVE: Color32 = Color32::from_rgb(0xff, 0x9e, 0x9e);
 
 /// Engine is searching.
 pub const ALERT_YELLOW: Color32 = Color32::from_rgb(0xf1, 0xfa, 0x8c);
+
+/// Analysis arrow of engine A (green), blended at 60 % opacity over the board.
+pub const ARROW_ENGINE_A: Color32 = Color32::from_rgba_unmultiplied_const(0x15, 0x78, 0x1b, 0x99);
+
+/// Analysis arrow of engine B (red), blended at 60 % opacity over the board.
+pub const ARROW_ENGINE_B: Color32 = Color32::from_rgba_unmultiplied_const(0x88, 0x20, 0x20, 0x99);
 
 /// Engine offline or an error.
 pub const DANGER_RED: Color32 = Color32::from_rgb(0xff, 0x55, 0x55);

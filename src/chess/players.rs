@@ -107,7 +107,11 @@ impl GameMode {
                     PieceColor::White => "White",
                     PieceColor::Black => "Black",
                 };
-                format!("Play {} vs engine {}", side, char::from(b'A' + engine as u8))
+                format!(
+                    "Play {} vs engine {}",
+                    side,
+                    char::from(b'A' + engine as u8)
+                )
             }
             GameMode::EngineVsEngine => "Engine A vs engine B".to_string(),
         }
@@ -157,8 +161,14 @@ mod tests {
 
     #[test]
     fn engine_vs_engine_binds_a_to_white_and_b_to_black() {
-        assert_eq!(GameMode::EngineVsEngine.seat(PieceColor::White), Seat::Engine(0));
-        assert_eq!(GameMode::EngineVsEngine.seat(PieceColor::Black), Seat::Engine(1));
+        assert_eq!(
+            GameMode::EngineVsEngine.seat(PieceColor::White),
+            Seat::Engine(0)
+        );
+        assert_eq!(
+            GameMode::EngineVsEngine.seat(PieceColor::Black),
+            Seat::Engine(1)
+        );
         assert_eq!(GameMode::EngineVsEngine.engine_slots(), &[0, 1]);
     }
 

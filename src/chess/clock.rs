@@ -285,8 +285,8 @@ impl Clock {
     }
 }
 
-/// The clock face for `ms` milliseconds left, as en-croissant shows it:
-/// `05:00` from a minute up, `1:02:03` from an hour up, and `00:09.5` under a
+/// The clock face for `ms` milliseconds left: `05:00` from a minute up,
+/// `1:02:03` from an hour up, and `00:09.5` under a
 /// minute. Tenths are truncated, as on a real clock.
 pub fn format_clock(ms: u64) -> String {
     if ms < 60_000 {

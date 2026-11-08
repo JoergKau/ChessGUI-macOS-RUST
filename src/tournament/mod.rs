@@ -3,8 +3,8 @@
 //!
 //! The pure parts live here so they can be tested without an engine process.
 //! The application drives the games on its normal board: one game at a time,
-//! with the move list, clocks and engine cards live. The behaviour follows
-//! cutechess where it matters for a two-engine match: colours alternate, an
+//! with the move list, clocks and engine cards live. The behaviour covers what
+//! a two-engine match needs: colours alternate, an
 //! EPD file supplies the starting positions, `resign`/`draw` adjudication uses
 //! the engines' own scores, and the PGN file receives one game per round.
 
@@ -57,9 +57,10 @@ pub struct EngineSpec {
 impl EngineSpec {
     /// A spec for `path`, using the file name as the display name.
     pub fn from_path(path: PathBuf) -> Self {
-        let name = path
-            .file_name()
-            .map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned());
+        let name = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
         Self { path, name }
     }
 
@@ -243,7 +244,9 @@ impl TournamentConfig {
         }
         if let Some(book) = &self.opening_book {
             if book.path.as_os_str().is_empty() {
-                return Err("Choose an EPD or PolyGlot opening book or clear the field.".to_string());
+                return Err(
+                    "Choose an EPD or PolyGlot opening book or clear the field.".to_string()
+                );
             }
             book_kind(&book.path)?;
         }
@@ -267,7 +270,10 @@ impl TournamentConfig {
     pub fn engine_options(&self) -> std::collections::BTreeMap<String, String> {
         let mut options = std::collections::BTreeMap::new();
         options.insert("Hash".to_string(), self.hash_mb.to_string());
-        options.insert("NalimovCache".to_string(), self.nalimov_cache_mb.to_string());
+        options.insert(
+            "NalimovCache".to_string(),
+            self.nalimov_cache_mb.to_string(),
+        );
         // Some engines spell the option with a `Size` suffix; the analysis
         // session only forwards names the engine declared.
         options.insert(
@@ -277,7 +283,7 @@ impl TournamentConfig {
         options
     }
 
-    /// The PGN tag value for the clock, in cutechess's minutes+seconds form.
+    /// The PGN tag value for the clock, in minutes+seconds form.
     pub fn time_control_tag(&self) -> String {
         time_control_tag(&self.time_control)
     }
@@ -459,10 +465,12 @@ impl EpdBook {
         loop {
             line.clear();
             let start = offset;
-            let read = reader.read_line(&mut line).map_err(|source| EpdError::Read {
-                path: path.to_path_buf(),
-                source,
-            })?;
+            let read = reader
+                .read_line(&mut line)
+                .map_err(|source| EpdError::Read {
+                    path: path.to_path_buf(),
+                    source,
+                })?;
             if read == 0 {
                 break;
             }
@@ -500,10 +508,11 @@ impl EpdBook {
             path: self.path.clone(),
             source,
         })?;
-        file.seek(SeekFrom::Start(offset)).map_err(|source| EpdError::Read {
-            path: self.path.clone(),
-            source,
-        })?;
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|source| EpdError::Read {
+                path: self.path.clone(),
+                source,
+            })?;
         let mut line = String::new();
         BufReader::new(file)
             .read_line(&mut line)
@@ -516,8 +525,7 @@ impl EpdBook {
 }
 
 /// Turn one EPD line into a six-field FEN. The first four fields are the
-/// position; `hmvc` and `fmvn` operations supply the move counters, as in
-/// cutechess's `EpdRecord`.
+/// position; `hmvc` and `fmvn` operations supply the move counters.
 pub fn parse_epd_line(line: &str) -> Option<String> {
     let trimmed = line.trim_start_matches('\u{feff}').trim();
     if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with(';') {
@@ -531,10 +539,7 @@ pub fn parse_epd_line(line: &str) -> Option<String> {
     let mut halfmove = None;
     let mut fullmove = None;
     // Many EPD suites (including the UHO file) are full six-field FENs.
-    if tokens.len() >= 6
-        && tokens[4].parse::<u32>().is_ok()
-        && tokens[5].parse::<u32>().is_ok()
-    {
+    if tokens.len() >= 6 && tokens[4].parse::<u32>().is_ok() && tokens[5].parse::<u32>().is_ok() {
         halfmove = Some(clean_operand(tokens[4]));
         fullmove = Some(clean_operand(tokens[5]));
     }
@@ -556,10 +561,7 @@ pub fn parse_epd_line(line: &str) -> Option<String> {
 
 /// EPD operands end at a semicolon and may be quoted.
 fn clean_operand(token: &str) -> &str {
-    token
-        .trim_end_matches(';')
-        .trim_matches('"')
-        .trim()
+    token.trim_end_matches(';').trim_matches('"').trim()
 }
 
 /// Why an EPD file could not be read.
@@ -592,13 +594,27 @@ impl std::fmt::Display for EpdError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EpdError::Open { path, source } => {
-                write!(f, "could not open EPD book `{}`: {}", path.display(), source)
+                write!(
+                    f,
+                    "could not open EPD book `{}`: {}",
+                    path.display(),
+                    source
+                )
             }
             EpdError::Read { path, source } => {
-                write!(f, "could not read EPD book `{}`: {}", path.display(), source)
+                write!(
+                    f,
+                    "could not read EPD book `{}`: {}",
+                    path.display(),
+                    source
+                )
             }
             EpdError::Index { index, len } => {
-                write!(f, "EPD position {} is outside the book ({} positions)", index, len)
+                write!(
+                    f,
+                    "EPD position {} is outside the book ({} positions)",
+                    index, len
+                )
             }
         }
     }
@@ -671,7 +687,7 @@ pub enum Adjudication {
     Resign(PieceColor),
 }
 
-/// Resign and draw adjudication, mirroring cutechess's `GameAdjudicator`.
+/// Resign and draw adjudication: score and move thresholds that end a game.
 #[derive(Clone, Debug)]
 pub struct Adjudicator {
     resign_move_count: u32,
@@ -699,7 +715,7 @@ impl Adjudicator {
 
     /// Observe the score of the side that just moved, at the position after
     /// its move. `last_move` resets the draw counter after captures and pawn
-    /// moves, as cutechess does.
+    /// moves.
     pub fn observe(
         &mut self,
         mover: PieceColor,
@@ -848,7 +864,11 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let mp = (5 * doy + 2) / 153;
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    (year + if month <= 2 { 1 } else { 0 }, month as u32, day as u32)
+    (
+        year + if month <= 2 { 1 } else { 0 },
+        month as u32,
+        day as u32,
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -930,16 +950,10 @@ impl TournamentStatus {
         let scores = self.score_line();
         if self.running {
             if let Some(game) = self.current.first() {
-                return format!(
-                    "Tournament: game {} of {}",
-                    game.number, self.total_games
-                );
+                return format!("Tournament: game {} of {}", game.number, self.total_games);
             }
             if self.completed_games == 0 {
-                return format!(
-                    "Tournament: 0 of {} games, starting…",
-                    self.total_games
-                );
+                return format!("Tournament: 0 of {} games, starting…", self.total_games);
             }
             return format!(
                 "Tournament: {} of {} games finished ({})",
@@ -1084,7 +1098,11 @@ mod tests {
             "a relative default resolves against `/` in a Finder launch"
         );
         assert!(
-            path.ends_with(Path::new("Documents").join("SiliconBoard").join("engine-match.pgn")),
+            path.ends_with(
+                Path::new("Documents")
+                    .join("SiliconBoard")
+                    .join("engine-match.pgn")
+            ),
             "unexpected default: {}",
             path.display()
         );
@@ -1094,7 +1112,10 @@ mod tests {
     #[test]
     fn relative_pgn_paths_are_anchored_in_the_default_folder() {
         let resolved = resolve_pgn_path(Path::new("tournament/engine-match.pgn"));
-        assert!(resolved.is_absolute(), "a relative path must not stay relative");
+        assert!(
+            resolved.is_absolute(),
+            "a relative path must not stay relative"
+        );
         assert_eq!(
             resolved,
             default_output_dir().join("tournament/engine-match.pgn"),
@@ -1102,7 +1123,11 @@ mod tests {
         );
 
         let absolute = Path::new("/tmp/games.pgn");
-        assert_eq!(resolve_pgn_path(absolute), absolute, "absolute paths are kept");
+        assert_eq!(
+            resolve_pgn_path(absolute),
+            absolute,
+            "absolute paths are kept"
+        );
     }
 
     #[test]
@@ -1111,7 +1136,10 @@ mod tests {
         config.games = 4;
         let games = schedule_games_with_seed(&config, 0, 7);
         assert_eq!(
-            games.iter().map(|game| game.white_is_first).collect::<Vec<_>>(),
+            games
+                .iter()
+                .map(|game| game.white_is_first)
+                .collect::<Vec<_>>(),
             vec![true, false, true, false]
         );
         config.reverse_colors = false;
@@ -1162,7 +1190,8 @@ mod tests {
     #[test]
     fn epd_line_uses_hmvc_and_fmvn_or_the_default_counters() {
         assert_eq!(
-            parse_epd_line("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - hmvc 4; fmvn 12;").as_deref(),
+            parse_epd_line("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - hmvc 4; fmvn 12;")
+                .as_deref(),
             Some("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 4 12")
         );
         assert_eq!(
@@ -1171,7 +1200,8 @@ mod tests {
         );
         // UHO lines are full six-field FENs; keep their move counters.
         assert_eq!(
-            parse_epd_line("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 2 4").as_deref(),
+            parse_epd_line("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 2 4")
+                .as_deref(),
             Some("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 2 4")
         );
         assert_eq!(parse_epd_line("   "), None);
@@ -1193,7 +1223,10 @@ mod tests {
         .unwrap();
         let book = EpdBook::load(&path).expect("the EPD file must index");
         assert_eq!(book.len(), 3);
-        let fen = book.fen_at(0).unwrap().expect("the first line is a position");
+        let fen = book
+            .fen_at(0)
+            .unwrap()
+            .expect("the first line is a position");
         assert!(crate::chess::GameState::from_fen(&fen).is_ok());
     }
 
@@ -1213,10 +1246,9 @@ mod tests {
             bytes.extend_from_slice(&0u32.to_be_bytes());
         }
         let book = crate::chess::PolyglotBook::from_bytes(&bytes).unwrap();
-        let target = GameState::from_fen(
-            "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
-        )
-        .unwrap();
+        let target =
+            GameState::from_fen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2")
+                .unwrap();
         let path = find_book_path(&book, &target.position()).expect("the book has the line");
         assert_eq!(path, vec!["e2e4".to_string(), "e7e5".to_string()]);
     }
@@ -1335,8 +1367,14 @@ mod tests {
 
     #[test]
     fn time_control_tag_uses_minutes_and_seconds() {
-        assert_eq!(time_control_tag(&TimeControl::fischer(240_000, 1_000)), "4+1");
-        assert_eq!(time_control_tag(&TimeControl::fischer(90_000, 2_000)), "1:30+2");
+        assert_eq!(
+            time_control_tag(&TimeControl::fischer(240_000, 1_000)),
+            "4+1"
+        );
+        assert_eq!(
+            time_control_tag(&TimeControl::fischer(90_000, 2_000)),
+            "1:30+2"
+        );
         assert_eq!(time_control_tag(&TimeControl::sudden_death(60_000)), "60");
     }
 
@@ -1355,10 +1393,7 @@ mod tests {
         status.wins.insert("Engine A".to_string(), 2);
         status.wins.insert("Engine B".to_string(), 3);
         status.draws = 1;
-        assert_eq!(
-            status.match_line(),
-            "Engine A vs Engine B: 2½–3½"
-        );
+        assert_eq!(status.match_line(), "Engine A vs Engine B: 2½–3½");
     }
 
     #[test]
@@ -1394,7 +1429,11 @@ mod tests {
     fn the_tournament_window_shows_the_mover_score_from_whites_side() {
         let ahead = Score::Cp(150);
         assert_eq!(white_score_label(ahead, PieceColor::White), "+1.50");
-        assert_eq!(white_score_label(ahead, PieceColor::Black), "-1.50", "Black ahead shows negative");
+        assert_eq!(
+            white_score_label(ahead, PieceColor::Black),
+            "-1.50",
+            "Black ahead shows negative"
+        );
         assert_eq!(white_score_label(Score::Mate(3), PieceColor::Black), "#-3");
         assert_eq!(white_score_label(Score::Mate(3), PieceColor::White), "#3");
     }

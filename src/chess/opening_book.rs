@@ -175,8 +175,6 @@ impl PolyglotBook {
             .copied()
             .collect()
     }
-
-
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -193,9 +191,7 @@ pub enum BookError {
     /// `byteorder` blew up while parsing big-endian integers.
     Read(std::io::Error),
     /// Length is not a multiple of 16 bytes.
-    InvalidSize {
-        byte_len: usize,
-    },
+    InvalidSize { byte_len: usize },
 }
 
 impl std::fmt::Display for BookError {
@@ -205,11 +201,9 @@ impl std::fmt::Display for BookError {
                 write!(f, "could not open book `{}`: {}", path.display(), source)
             }
             BookError::Read(source) => write!(f, "could not parse book record: {}", source),
-            BookError::InvalidSize { byte_len } => write!(
-                f,
-                "book is not a multiple of 16 bytes (got {})",
-                byte_len
-            ),
+            BookError::InvalidSize { byte_len } => {
+                write!(f, "book is not a multiple of 16 bytes (got {})", byte_len)
+            }
         }
     }
 }
@@ -427,7 +421,11 @@ mod tests {
         for entry in &start_moves {
             let from = (entry.encoded_move >> 6) & 0x3F;
             let to = entry.encoded_move & 0x3F;
-            assert_ne!(from, to, "record {:#06x} is a null move", entry.encoded_move);
+            assert_ne!(
+                from, to,
+                "record {:#06x} is a null move",
+                entry.encoded_move
+            );
             assert!(
                 entry.to_move(&start_pos).is_some(),
                 "book move {:#06x} does not map onto a legal start-position move",
@@ -462,7 +460,12 @@ mod tests {
     fn real_start_position_record_is_e2e4() {
         // 0x031c is the first-move record for e2e4 in the sample book above
         // (and in well-known PolyGlot books).
-        let entry = BookEntry { key: 0, encoded_move: 0x031c, weight: 1, learn: 0 };
+        let entry = BookEntry {
+            key: 0,
+            encoded_move: 0x031c,
+            weight: 1,
+            learn: 0,
+        };
         assert_eq!(
             entry.to_move(&shakmaty::Chess::default()),
             Some(Move::Normal {
@@ -478,7 +481,8 @@ mod tests {
     #[test]
     fn book_castling_move_decodes_to_castle() {
         // PolyGlot encodes castling as "king takes own rook" (e1h1 for O-O).
-        let game = GameState::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1").unwrap();
+        let game =
+            GameState::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1").unwrap();
         let encoded = encode("e1", "h1", 0);
         let book = make_book(&[(0, encoded, 1, 0)]);
         let entry = book.entries[0];
@@ -495,7 +499,9 @@ mod tests {
     #[test]
     fn book_en_passant_move_decodes_to_en_passant() {
         // White pawn on e5, black just played d7-d5: e5xd6 e.p.
-        let game = GameState::from_fen("rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3").unwrap();
+        let game =
+            GameState::from_fen("rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3")
+                .unwrap();
         let encoded = encode("e5", "d6", 0);
         let book = make_book(&[(0, encoded, 1, 0)]);
         let entry = book.entries[0];
@@ -562,9 +568,15 @@ mod tests {
     #[test]
     fn picker_follows_the_weights() {
         let mut picker = BookPicker::with_seed(42);
-        let heavy = (0..4000).filter(|_| picker.pick(&[1, 3]) == Some(1)).count();
+        let heavy = (0..4000)
+            .filter(|_| picker.pick(&[1, 3]) == Some(1))
+            .count();
         // Expected 3000 with a standard deviation of about 27.
-        assert!((2800..=3200).contains(&heavy), "heavy move chosen {} times", heavy);
+        assert!(
+            (2800..=3200).contains(&heavy),
+            "heavy move chosen {} times",
+            heavy
+        );
     }
 
     #[test]

@@ -13,8 +13,8 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use log::{LevelFilter, Log, Metadata, Record};
 
@@ -138,7 +138,10 @@ fn session_log_path() -> Option<PathBuf> {
     }
     let home = std::env::var_os("HOME")?;
     let folder = PathBuf::from(home).join("Library/Logs/SiliconBoard");
-    Some(folder.join(format!("siliconboard-{}.log", utc_stamp(std::time::SystemTime::now()))))
+    Some(folder.join(format!(
+        "siliconboard-{}.log",
+        utc_stamp(std::time::SystemTime::now())
+    )))
 }
 
 /// Opens this run's log. A file given by `SILICONBOARD_LOG_FILE` is truncated
@@ -224,7 +227,8 @@ impl SessionFile {
         self.part += 1;
         let name = format!("{}-{}.log", self.stem.display(), self.part);
         let next = PathBuf::from(name);
-        self.file = create_log(&next).ok_or_else(|| io::Error::other("cannot start the next log file"))?;
+        self.file =
+            create_log(&next).ok_or_else(|| io::Error::other("cannot start the next log file"))?;
         if let Some(folder) = next.parent() {
             prune_logs(folder, KEEP_LOGS - 1, Some(&next));
         }
@@ -297,8 +301,15 @@ mod tests {
     #[test]
     fn time_stamps_are_utc_and_fixed_width() {
         assert_eq!(utc_stamp(UNIX_EPOCH), "19700101-000000");
-        assert_eq!(utc_stamp(UNIX_EPOCH + Duration::from_secs(1_000_000_000)), "20010909-014640");
-        assert_eq!(utc_stamp(UNIX_EPOCH + Duration::from_secs(951_782_400)), "20000229-000000", "leap day");
+        assert_eq!(
+            utc_stamp(UNIX_EPOCH + Duration::from_secs(1_000_000_000)),
+            "20010909-014640"
+        );
+        assert_eq!(
+            utc_stamp(UNIX_EPOCH + Duration::from_secs(951_782_400)),
+            "20000229-000000",
+            "leap day"
+        );
     }
 
     #[test]
@@ -306,9 +317,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let base = SystemTime::now() - std::time::Duration::from_secs(10_000);
         for n in 1..=7u64 {
-            let path = dir.path().join(format!("siliconboard-2026110{n}-120000.log"));
+            let path = dir
+                .path()
+                .join(format!("siliconboard-2026110{n}-120000.log"));
             let file = std::fs::File::create(&path).unwrap();
-            file.set_modified(base + std::time::Duration::from_secs(n * 100)).unwrap();
+            file.set_modified(base + std::time::Duration::from_secs(n * 100))
+                .unwrap();
         }
         std::fs::write(dir.path().join("notes.txt"), "unrelated").unwrap();
         prune_logs(dir.path(), KEEP_LOGS - 1, None);
@@ -351,7 +365,11 @@ mod tests {
         let second = std::fs::metadata(dir.path().join("siliconboard-20260101-000000-2.log"))
             .unwrap()
             .len();
-        assert_eq!((first, second), (200, 100), "the third record starts the second file");
+        assert_eq!(
+            (first, second),
+            (200, 100),
+            "the third record starts the second file"
+        );
     }
 
     #[test]

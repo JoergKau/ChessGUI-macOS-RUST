@@ -1,8 +1,7 @@
 //! UCI engine subsystem.
 //!
-//! Implements an async, tokio-based UCI engine supervisor whose architecture
-//! mirrors the proven `Rust-Chess-GUI-0.2.1` reference: **three dedicated
-//! tokio tasks** per engine subprocess —
+//! Implements an async, tokio-based UCI engine supervisor built on **three
+//! dedicated tokio tasks** per engine subprocess —
 //!
 //! 1. **Writer task** — drains `cmd_rx` and writes each line to the
 //!    child's stdin via a buffered writer.
@@ -20,13 +19,12 @@
 //!
 //! An earlier draft multiplexed read + write + terminate inside a single
 //! `tokio::select!`, but the compile-time handshake between variadic
-//! branches and `?Sized` future outputs was brittle — and `Rust-Chess-GUI`
-//! demonstrates that the three-task layout is just as performant and far
-//! easier to reason about. We follow that pattern here.
+//! branches and `?Sized` future outputs was brittle. The three-task layout is
+//! just as performant and far easier to reason about.
 
 pub mod analysis;
-mod launch;
 pub mod host;
+mod launch;
 pub mod protocol;
 pub mod registry;
 pub mod uci_parser;
@@ -36,16 +34,16 @@ pub use analysis::{AnalysisStatus, SearchGoal};
 pub use host::{EngineHost, EngineView};
 pub use protocol::{EngineCommand, EngineError, EngineEvent, Score};
 
-use uci_parser::{parse_line, HandshakeAccumulator, UciParseError};
 use launch::{check_executable, engine_path, Diagnostics};
 use protocol::EngineStats;
+use uci_parser::{parse_line, HandshakeAccumulator, UciParseError};
 use watchdog::{Timing, Watchdog, WatchdogAction};
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::Command;
@@ -77,7 +75,10 @@ pub struct EngineProcess {
     kill_tx: mpsc::Sender<()>,
     /// Broadcast channel for engine stdout lines (one line per message). The UI
     /// host uses the lossless `event_rx`; this remains for tests and observers.
-    #[allow(dead_code, reason = "kept for tests and external observers; the UI host uses event_rx")]
+    #[allow(
+        dead_code,
+        reason = "kept for tests and external observers; the UI host uses event_rx"
+    )]
     pub events: broadcast::Sender<ParsedUciLine>,
     /// Lossless stream for the UI host. The broadcast channel is kept for
     /// tests and other observers; the host drains this unbounded channel so a
@@ -138,10 +139,7 @@ pub enum ParsedUciLine {
     Event(EngineEvent),
     /// Line was unreadable / unparseable. We carry the raw line so the UI
     /// can render it in a debug log if needed.
-    ParseError {
-        line: String,
-        source: UciParseError,
-    },
+    ParseError { line: String, source: UciParseError },
     /// Unknown / engine-specific line (treated as info, not an error).
     Unknown(String),
 }
@@ -156,7 +154,10 @@ pub type EngineWake = Arc<dyn Fn(bool) + Send + Sync>;
 impl EngineProcess {
     /// Spawn without a wake callback, for tests and for callers that drain
     /// [`Self::subscribe`] themselves. The app uses [`Self::spawn_waking`].
-    #[allow(dead_code, reason = "the app always passes a wake callback; tests spawn without one")]
+    #[allow(
+        dead_code,
+        reason = "the app always passes a wake callback; tests spawn without one"
+    )]
     pub async fn spawn(binary: &Path) -> Result<Self, EngineError> {
         Self::spawn_inner(binary, None).await
     }
@@ -183,7 +184,10 @@ impl EngineProcess {
             .process_group(0)
             .env("PATH", engine_path())
             .kill_on_drop(true);
-        if let Some(folder) = binary.parent().filter(|folder| !folder.as_os_str().is_empty()) {
+        if let Some(folder) = binary
+            .parent()
+            .filter(|folder| !folder.as_os_str().is_empty())
+        {
             cmd.current_dir(folder);
         }
 
@@ -200,16 +204,10 @@ impl EngineProcess {
             source: std::io::Error::new(std::io::ErrorKind::BrokenPipe, "missing stdin pipe"),
         })?;
         let stdout = child.stdout.take().ok_or(EngineError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "missing stdout pipe",
-            ),
+            source: std::io::Error::new(std::io::ErrorKind::BrokenPipe, "missing stdout pipe"),
         })?;
         let stderr = child.stderr.take().ok_or(EngineError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::BrokenPipe,
-                "missing stderr pipe",
-            ),
+            source: std::io::Error::new(std::io::ErrorKind::BrokenPipe, "missing stderr pipe"),
         })?;
 
         let (cmd_tx, stdin_rx) = mpsc::channel::<EngineCommand>(COMMAND_BUFFER);
@@ -345,7 +343,10 @@ impl EngineProcess {
     }
 
     /// Subscribe a consumer to the broadcast event stream.
-    #[allow(dead_code, reason = "used by tests and external observers; the UI host uses the lossless channel")]
+    #[allow(
+        dead_code,
+        reason = "used by tests and external observers; the UI host uses the lossless channel"
+    )]
     pub fn subscribe(&self) -> broadcast::Receiver<ParsedUciLine> {
         self.events.subscribe()
     }
@@ -356,8 +357,8 @@ impl EngineProcess {
     pub async fn terminate(&self) -> Result<(), EngineError> {
         // Best-effort polite quit — if the engine is dead, ignore.
         let _ = self.cmd_tx.send(EngineCommand::Quit).await;
-        // Schedule an escalation to hard kill (500 ms timeout matches what
-        // the Rust-Chess-GUI reference uses for the same transition).
+        // Schedule an escalation to hard kill; 500 ms is the grace window
+        // for the engine to answer the quit.
         let kill_tx = self.kill_tx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -455,12 +456,7 @@ async fn run_reader(
                         ParsedUciLine::Unknown(line)
                     }
                     Err(source) => {
-                        log::warn!(
-                            "{} parse error `{}`: {}",
-                            binary.display(),
-                            trimmed,
-                            source
-                        );
+                        log::warn!("{} parse error `{}`: {}", binary.display(), trimmed, source);
                         ParsedUciLine::ParseError {
                             line: trimmed.to_string(),
                             source,
@@ -496,9 +492,8 @@ async fn run_reader(
                         // the host takes before its queue. A search that prints
                         // faster than the window draws no longer piles up
                         //. Merging is what the host would do anyway.
-                        let mut pending = info
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        let mut pending =
+                            info.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                         match pending.as_mut() {
                             Some(entry) => entry.merge(&stats),
                             None => *pending = Some(stats),
@@ -530,12 +525,24 @@ async fn run_reader(
 }
 
 /// What the card shows of one search: depth, score, nodes, speed and the PV.
-type ShownValues = (Option<u32>, Option<Score>, Option<u64>, Option<u64>, Vec<String>);
+type ShownValues = (
+    Option<u32>,
+    Option<Score>,
+    Option<u64>,
+    Option<u64>,
+    Vec<String>,
+);
 
 /// The values of the statistics the card shows: score, depth, nodes, speed and
 /// the principal variation. A change in any of them is a visible change.
 fn shown_values(stats: &EngineStats) -> ShownValues {
-    (stats.depth, stats.score, stats.nodes, stats.nps, stats.pv.clone())
+    (
+        stats.depth,
+        stats.score,
+        stats.nodes,
+        stats.nps,
+        stats.pv.clone(),
+    )
 }
 
 /// Record one engine event in the watchdog. Only real signs of life count:
@@ -543,7 +550,9 @@ fn shown_values(stats: &EngineStats) -> ShownValues {
 /// Noise does not. Replies are logged at debug with their timing.
 fn observe_line(watchdog: &Mutex<Watchdog>, binary: &Path, event: &EngineEvent) {
     let now = std::time::Instant::now();
-    let mut watch = watchdog.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut watch = watchdog
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     match event {
         EngineEvent::ReadyOk => {
             // Answers to the watchdog's pings: one every few seconds during a
@@ -618,9 +627,10 @@ async fn run_monitor(monitor: Monitor) {
                     monitor.binary.display(),
                     reason,
                     watch.search_age(now).map_or(0.0, |age| age.as_secs_f64()),
-                    watch
-                        .stop_age(now)
-                        .map_or_else(|| "none".to_string(), |age| format!("{:.1}", age.as_secs_f64()))
+                    watch.stop_age(now).map_or_else(
+                        || "none".to_string(),
+                        |age| format!("{:.1}", age.as_secs_f64())
+                    )
                 );
             }
             action
@@ -767,7 +777,11 @@ mod tests {
 
     /// Wait up to `timeout` for the predicate to become true, draining
     /// broadcasts meanwhile so the broadcast buffer does not fill up.
-    async fn wait_until<F>(mut rx: broadcast::Receiver<ParsedUciLine>, timeout: Duration, mut pred: F) -> Vec<ParsedUciLine>
+    async fn wait_until<F>(
+        mut rx: broadcast::Receiver<ParsedUciLine>,
+        timeout: Duration,
+        mut pred: F,
+    ) -> Vec<ParsedUciLine>
     where
         F: FnMut(&ParsedUciLine) -> bool,
     {
@@ -847,7 +861,11 @@ mod tests {
         // A stand-in engine that prints one info line and then stays alive.
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("chatty-engine.sh");
-        std::fs::write(&script, "#!/bin/sh\nsleep 0.1\necho 'info depth 1 score cp 0'\nsleep 1\n").unwrap();
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nsleep 0.1\necho 'info depth 1 score cp 0'\nsleep 1\n",
+        )
+        .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let wakes = Arc::new(AtomicUsize::new(0));
@@ -867,7 +885,9 @@ mod tests {
         })
         .await;
         assert!(
-            drained.iter().any(|line| matches!(line, ParsedUciLine::Event(EngineEvent::Info(_)))),
+            drained
+                .iter()
+                .any(|line| matches!(line, ParsedUciLine::Event(EngineEvent::Info(_)))),
             "the script engine's info line must arrive"
         );
         assert!(
@@ -902,8 +922,7 @@ mod tests {
             }) if !name.is_empty() => Some((name.clone(), options.clone(), author.clone())),
             _ => None,
         });
-        let (name, options, _author) =
-            found.expect("did not see a populated UciOk within 5s");
+        let (name, options, _author) = found.expect("did not see a populated UciOk within 5s");
         // The test engine may be Stockfish or any other UCI engine, so only the
         // shape of the handshake is asserted, not a family name.
         assert!(!name.is_empty(), "the handshake must name the engine");
@@ -1018,8 +1037,15 @@ mod tests {
         while !pidfile.exists() && std::time::Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        let helper: i32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
-        assert!(unsafe { libc::kill(helper, 0) } == 0, "the helper must be running before the quit");
+        let helper: i32 = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(
+            unsafe { libc::kill(helper, 0) } == 0,
+            "the helper must be running before the quit"
+        );
 
         engine.terminate().await.unwrap();
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -1036,10 +1062,20 @@ mod tests {
 
     #[test]
     fn only_secondary_multipv_info_lines_are_skipped() {
-        assert!(is_secondary_info("info depth 9 multipv 2 score cp -12 pv e2e4"));
-        assert!(!is_secondary_info("info depth 9 multipv 1 score cp 12 pv e2e4"));
-        assert!(!is_secondary_info("info depth 9 score cp 12 pv e2e4"), "no MultiPV means line 1");
-        assert!(!is_secondary_info("bestmove multipv 2"), "only `info` lines are considered");
+        assert!(is_secondary_info(
+            "info depth 9 multipv 2 score cp -12 pv e2e4"
+        ));
+        assert!(!is_secondary_info(
+            "info depth 9 multipv 1 score cp 12 pv e2e4"
+        ));
+        assert!(
+            !is_secondary_info("info depth 9 score cp 12 pv e2e4"),
+            "no MultiPV means line 1"
+        );
+        assert!(
+            !is_secondary_info("bestmove multipv 2"),
+            "only `info` lines are considered"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -1101,7 +1137,11 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let script = dir.path().join("complains.sh");
-        std::fs::write(&script, "#!/bin/sh\necho 'boom: data file missing' >&2\nexit 3\n").unwrap();
+        std::fs::write(
+            &script,
+            "#!/bin/sh\necho 'boom: data file missing' >&2\nexit 3\n",
+        )
+        .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let engine = EngineProcess::spawn(&script).await.unwrap();
@@ -1144,12 +1184,16 @@ mod tests {
         .await
         .unwrap();
         let rx = engine.subscribe();
-        engine.try_send(EngineCommand::Go(GoControl::Depth(1))).unwrap();
+        engine
+            .try_send(EngineCommand::Go(GoControl::Depth(1)))
+            .unwrap();
         let drained = wait_until(rx, Duration::from_secs(5), |line| {
             matches!(line, ParsedUciLine::Event(EngineEvent::BestMove { .. }))
         })
         .await;
-        assert!(drained.iter().any(|l| matches!(l, ParsedUciLine::Event(EngineEvent::BestMove { .. }))));
+        assert!(drained
+            .iter()
+            .any(|l| matches!(l, ParsedUciLine::Event(EngineEvent::BestMove { .. }))));
         assert_eq!(
             quiet_wakes.load(Ordering::Relaxed),
             1,

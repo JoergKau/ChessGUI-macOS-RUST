@@ -11,7 +11,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::engine::protocol::{EngineCommand, EngineEvent, EngineStats, GoControl, Score, UciOption};
+use crate::engine::protocol::{
+    EngineCommand, EngineEvent, EngineStats, GoControl, Score, UciOption,
+};
 
 /// What the engine is asked to do with the target position.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -440,7 +442,10 @@ mod tests {
     fn enabling_analysis_after_readyok_starts_an_infinite_search() {
         let mut s = ready_session();
         assert_eq!(s.status(), AnalysisStatus::Ready);
-        assert!(s.set_target(START, SearchGoal::Analyse).is_empty(), "analysis is still off");
+        assert!(
+            s.set_target(START, SearchGoal::Analyse).is_empty(),
+            "analysis is still off"
+        );
         let cmds = s.set_enabled(true);
         assert_eq!(
             cmds,
@@ -474,7 +479,10 @@ mod tests {
         s.on_event(&depth_info(5, 20));
 
         // The position changes: only `stop` goes out for now.
-        assert_eq!(s.set_target(AFTER_E4, SearchGoal::Analyse), vec![EngineCommand::Stop]);
+        assert_eq!(
+            s.set_target(AFTER_E4, SearchGoal::Analyse),
+            vec![EngineCommand::Stop]
+        );
         assert_eq!(s.status(), AnalysisStatus::Thinking);
 
         // Late info from the old search is ignored.
@@ -496,7 +504,11 @@ mod tests {
                 EngineCommand::Go(GoControl::Infinite),
             ]
         );
-        assert_eq!(s.stats(), &EngineStats::default(), "stats reset for the new position");
+        assert_eq!(
+            s.stats(),
+            &EngineStats::default(),
+            "stats reset for the new position"
+        );
     }
 
     #[test]
@@ -520,7 +532,11 @@ mod tests {
         }));
         assert_eq!(s.stats().depth, Some(6));
         assert_eq!(s.stats().nps, Some(1_200_000));
-        assert_eq!(s.stats().score, Some(Score::Cp(30)), "score kept from earlier line");
+        assert_eq!(
+            s.stats().score,
+            Some(Score::Cp(30)),
+            "score kept from earlier line"
+        );
     }
 
     #[test]
@@ -558,7 +574,10 @@ mod tests {
         s.set_target(START, SearchGoal::Analyse);
         s.on_event(&EngineEvent::Terminated);
         assert_eq!(s.status(), AnalysisStatus::Offline);
-        assert!(s.set_target(AFTER_E4, SearchGoal::Analyse).is_empty(), "offline engines get no commands");
+        assert!(
+            s.set_target(AFTER_E4, SearchGoal::Analyse).is_empty(),
+            "offline engines get no commands"
+        );
     }
 
     #[test]
@@ -627,11 +646,18 @@ mod tests {
 
     #[test]
     fn saved_values_are_sent_once_the_engine_declares_its_options() {
-        let settings = [("Hash".to_string(), "64".to_string()), ("Gone".to_string(), "1".to_string())];
+        let settings = [
+            ("Hash".to_string(), "64".to_string()),
+            ("Gone".to_string(), "1".to_string()),
+        ];
         let mut s = AnalysisSession::with_settings(settings.into_iter().collect());
         s.handshake();
         let cmds = s.on_event(&uci_ok(vec![spin("Hash")]));
-        assert_eq!(cmds, vec![set("Hash", "64"), EngineCommand::IsReady], "options before isready, unknown ones skipped");
+        assert_eq!(
+            cmds,
+            vec![set("Hash", "64"), EngineCommand::IsReady],
+            "options before isready, unknown ones skipped"
+        );
         assert_eq!(s.options().len(), 1);
     }
 
@@ -739,12 +765,21 @@ mod tests {
     fn rest_goal_starts_nothing_and_stops_a_running_search() {
         let mut s = ready_session();
         s.set_enabled(true);
-        assert!(s.set_target(START, SearchGoal::Rest).is_empty(), "resting engines do not search");
+        assert!(
+            s.set_target(START, SearchGoal::Rest).is_empty(),
+            "resting engines do not search"
+        );
         assert_eq!(s.status(), AnalysisStatus::Ready);
 
         s.set_target(START, SearchGoal::Analyse);
-        assert_eq!(s.set_target(START, SearchGoal::Rest), vec![EngineCommand::Stop]);
-        assert!(s.on_event(&bestmove("e2e4")).is_empty(), "a rest does not restart by itself");
+        assert_eq!(
+            s.set_target(START, SearchGoal::Rest),
+            vec![EngineCommand::Stop]
+        );
+        assert!(
+            s.on_event(&bestmove("e2e4")).is_empty(),
+            "a rest does not restart by itself"
+        );
         assert_eq!(s.status(), AnalysisStatus::Ready);
     }
 
@@ -782,7 +817,10 @@ mod tests {
         assert_eq!(s.status(), AnalysisStatus::Thinking);
         assert_eq!(s.take_engine_move(), None, "no move before bestmove");
 
-        assert!(s.on_event(&bestmove("e2e4")).is_empty(), "a finished move search does not restart");
+        assert!(
+            s.on_event(&bestmove("e2e4")).is_empty(),
+            "a finished move search does not restart"
+        );
         assert_eq!(s.status(), AnalysisStatus::Ready);
         assert_eq!(s.take_engine_move(), Some("e2e4".to_string()));
         assert_eq!(s.take_engine_move(), None, "a move is taken once");
@@ -791,7 +829,10 @@ mod tests {
     #[test]
     fn move_goal_waits_for_the_analysis_switch_like_analysis_does() {
         let mut s = ready_session();
-        assert!(s.set_target(START, move_goal()).is_empty(), "analysis is still off");
+        assert!(
+            s.set_target(START, move_goal()).is_empty(),
+            "analysis is still off"
+        );
         let cmds = s.set_enabled(true);
         assert_eq!(cmds.len(), 2);
         assert_eq!(cmds[1], EngineCommand::Go(GoControl::MoveTime(1_000)));
@@ -802,7 +843,10 @@ mod tests {
         let mut s = ready_session();
         s.set_enabled(true);
         s.set_target(START, move_goal());
-        assert_eq!(s.set_target(AFTER_E4, SearchGoal::Analyse), vec![EngineCommand::Stop]);
+        assert_eq!(
+            s.set_target(AFTER_E4, SearchGoal::Analyse),
+            vec![EngineCommand::Stop]
+        );
 
         let restart = s.on_event(&bestmove("e7e5"));
         assert_eq!(
@@ -815,7 +859,11 @@ mod tests {
                 EngineCommand::Go(GoControl::Infinite),
             ]
         );
-        assert_eq!(s.take_engine_move(), None, "the move was found for the old position");
+        assert_eq!(
+            s.take_engine_move(),
+            None,
+            "the move was found for the old position"
+        );
     }
 
     #[test]
@@ -835,7 +883,11 @@ mod tests {
         s.set_target(START, move_goal());
         assert_eq!(s.set_enabled(false), vec![EngineCommand::Stop]);
         assert!(s.on_event(&bestmove("e2e4")).is_empty());
-        assert_eq!(s.take_engine_move(), None, "an aborted search gives no move");
+        assert_eq!(
+            s.take_engine_move(),
+            None,
+            "an aborted search gives no move"
+        );
         assert_eq!(s.status(), AnalysisStatus::Ready);
 
         let resumed = s.set_enabled(true);
@@ -857,9 +909,16 @@ mod tests {
         s.set_enabled(true);
         s.set_target(START, move_goal());
         s.set_enabled(false);
-        assert!(s.set_enabled(true).is_empty(), "the stopped search is still running");
+        assert!(
+            s.set_enabled(true).is_empty(),
+            "the stopped search is still running"
+        );
         let restart = s.on_event(&bestmove("e2e4"));
         assert_eq!(restart.len(), 2);
-        assert_eq!(s.take_engine_move(), None, "the stopped search gives no move");
+        assert_eq!(
+            s.take_engine_move(),
+            None,
+            "the stopped search gives no move"
+        );
     }
 }

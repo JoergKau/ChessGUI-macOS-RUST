@@ -39,7 +39,9 @@ const CLOCK_WIDTH: f32 = 104.0;
 /// Split the area of the central panel into the top bar, the square board and
 /// the bottom bar. The board is as large as fits, and the group is centred.
 pub fn split_board_area(area: Rect) -> (Rect, Rect, Rect) {
-    let side = (area.width().min(area.height() - 2.0 * BAR_HEIGHT)).floor().max(1.0);
+    let side = (area.width().min(area.height() - 2.0 * BAR_HEIGHT))
+        .floor()
+        .max(1.0);
     let total = side + 2.0 * BAR_HEIGHT;
     let top = area.center().y - total / 2.0;
     let left = area.center().x - side / 2.0;
@@ -99,8 +101,15 @@ pub fn paint_bar(ui: &Ui, rect: Rect, bar: &PlayerBar) {
         Pos2::new(box_rect.right(), box_rect.bottom()),
     );
     painter.rect_filled(line, 0.0, theme::BAR_BLACK);
-    let filled = Rect::from_min_max(line.min, Pos2::new(line.left() + line.width() * fraction, line.bottom()));
-    let colour = if clock.active { theme::BLUE } else { theme::MUTED };
+    let filled = Rect::from_min_max(
+        line.min,
+        Pos2::new(line.left() + line.width() * fraction, line.bottom()),
+    );
+    let colour = if clock.active {
+        theme::BLUE
+    } else {
+        theme::MUTED
+    };
     painter.rect_filled(filled, 0.0, colour);
 }
 
@@ -172,8 +181,16 @@ impl TimeControlDialog {
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.label("Base time");
-                    ui.add(DragValue::new(&mut self.base_min).range(0..=180).suffix(" min"));
-                    ui.add(DragValue::new(&mut self.base_sec).range(0..=59).suffix(" s"));
+                    ui.add(
+                        DragValue::new(&mut self.base_min)
+                            .range(0..=180)
+                            .suffix(" min"),
+                    );
+                    ui.add(
+                        DragValue::new(&mut self.base_sec)
+                            .range(0..=59)
+                            .suffix(" s"),
+                    );
                 });
                 if self.kind == Kind::Fischer {
                     ui.horizontal(|ui| {
@@ -190,7 +207,8 @@ impl TimeControlDialog {
                 }
                 ui.separator();
 
-                let draft = control_from_draft(self.kind, self.base_min, self.base_sec, self.inc_sec);
+                let draft =
+                    control_from_draft(self.kind, self.base_min, self.base_sec, self.inc_sec);
                 if let Err(message) = &draft {
                     ui.colored_label(theme::DANGER_RED, *message);
                 }
@@ -265,7 +283,10 @@ mod tests {
     fn dialog_starts_from_the_current_setting() {
         let dialog = TimeControlDialog::new(Some(TimeControl::fischer(300_000, 3_000)));
         assert_eq!(dialog.kind, Kind::Fischer);
-        assert_eq!((dialog.base_min, dialog.base_sec, dialog.inc_sec), (5, 0, 3));
+        assert_eq!(
+            (dialog.base_min, dialog.base_sec, dialog.inc_sec),
+            (5, 0, 3)
+        );
         assert_eq!(TimeControlDialog::new(None).kind, Kind::NoClock);
     }
 }

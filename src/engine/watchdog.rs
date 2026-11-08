@@ -391,8 +391,15 @@ mod tests {
         let base = Instant::now();
         let mut w = Watchdog::new(Duration::from_millis(100), Duration::from_millis(300));
         assert_eq!(w.check(at(base, 0)), WatchdogAction::Ping);
-        assert_eq!(w.check(at(base, 300)), WatchdogAction::Nothing, "exactly at the timeout is not late");
-        assert_eq!(w.check(at(base, 301)), WatchdogAction::Stalled(StallReason::NoReadyOk));
+        assert_eq!(
+            w.check(at(base, 300)),
+            WatchdogAction::Nothing,
+            "exactly at the timeout is not late"
+        );
+        assert_eq!(
+            w.check(at(base, 301)),
+            WatchdogAction::Stalled(StallReason::NoReadyOk)
+        );
         assert!(w.is_stalled());
         assert_eq!(
             w.check(at(base, 5_000)),
@@ -423,7 +430,10 @@ mod tests {
         assert_eq!(w.check(at(base, 0)), WatchdogAction::Ping);
         w.note_output(at(base, 250));
         assert_eq!(w.check(at(base, 350)), WatchdogAction::Ping);
-        assert_eq!(w.check(at(base, 700)), WatchdogAction::Stalled(StallReason::NoReadyOk));
+        assert_eq!(
+            w.check(at(base, 700)),
+            WatchdogAction::Stalled(StallReason::NoReadyOk)
+        );
         assert!(w.is_stalled());
     }
 
@@ -452,7 +462,10 @@ mod tests {
         // `readyok` keeps coming, so the pings never fail; the stop still does.
         for ms in (100..=350).step_by(50) {
             let action = w.check(at(base, ms));
-            assert!(!matches!(action, WatchdogAction::Stalled(_)), "at {ms} ms: {action:?}");
+            assert!(
+                !matches!(action, WatchdogAction::Stalled(_)),
+                "at {ms} ms: {action:?}"
+            );
             w.answered();
         }
         assert_eq!(
@@ -469,7 +482,11 @@ mod tests {
         w.note_stop(at(base, 10));
         w.search_finished();
         assert!(!w.stop_pending());
-        assert_eq!(w.check(at(base, 5_000)), WatchdogAction::Nothing, "no stop deadline, and an idle engine is not pinged");
+        assert_eq!(
+            w.check(at(base, 5_000)),
+            WatchdogAction::Nothing,
+            "no stop deadline, and an idle engine is not pinged"
+        );
         assert!(!w.is_stalled());
     }
 
@@ -480,7 +497,10 @@ mod tests {
         w.begin_search(at(base, 0), Some(Duration::from_millis(200)));
         w.answered();
         // Limit 200 ms + grace 300 ms = 500 ms.
-        assert_ne!(w.check(at(base, 400)), WatchdogAction::Stalled(StallReason::MoveNotAnswered));
+        assert_ne!(
+            w.check(at(base, 400)),
+            WatchdogAction::Stalled(StallReason::MoveNotAnswered)
+        );
         w.answered();
         assert_eq!(
             w.check(at(base, 501)),
@@ -496,7 +516,11 @@ mod tests {
         w.answered();
         w.note_progress(at(base, 200));
         w.answered();
-        assert_eq!(w.check(at(base, 600)), WatchdogAction::Ping, "progress at 200 ms, limit 500 ms");
+        assert_eq!(
+            w.check(at(base, 600)),
+            WatchdogAction::Ping,
+            "progress at 200 ms, limit 500 ms"
+        );
         w.answered();
         assert_eq!(
             w.check(at(base, 701)),
@@ -521,8 +545,12 @@ mod tests {
                 break;
             }
         }
-        let stalled_at = stalled_at.expect("the hard limit must stop noise from keeping the engine alive");
-        assert!(stalled_at > 1_000, "the hard limit is 1 s, got {stalled_at} ms");
+        let stalled_at =
+            stalled_at.expect("the hard limit must stop noise from keeping the engine alive");
+        assert!(
+            stalled_at > 1_000,
+            "the hard limit is 1 s, got {stalled_at} ms"
+        );
     }
 
     #[test]

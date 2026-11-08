@@ -66,8 +66,7 @@ impl OpeningNames {
         let mut by_position = HashMap::new();
         for line in text.lines().skip(1) {
             let mut fields = line.splitn(3, '\t');
-            let (Some(_eco), Some(name), Some(pgn)) =
-                (fields.next(), fields.next(), fields.next())
+            let (Some(_eco), Some(name), Some(pgn)) = (fields.next(), fields.next(), fields.next())
             else {
                 continue;
             };
@@ -137,12 +136,19 @@ mod tests {
              C50\tItalian Game\t1. e4 e5 2. Nf3 Nc6 3. Bc4\n",
         );
         assert_eq!(names.name_for(&after_line("1. e4 e5")), Some("Open Game"));
-        assert_eq!(names.name_for(&after_line("1. e4 c5")), Some("Sicilian Defense"));
+        assert_eq!(
+            names.name_for(&after_line("1. e4 c5")),
+            Some("Sicilian Defense")
+        );
         assert_eq!(
             names.name_for(&after_line("1. e4 e5 2. Nf3 Nc6 3. Bc4")),
             Some("Italian Game")
         );
-        assert_eq!(names.name_for(&Chess::default()), None, "the start position is not in the table");
+        assert_eq!(
+            names.name_for(&Chess::default()),
+            None,
+            "the start position is not in the table"
+        );
     }
 
     #[test]

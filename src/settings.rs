@@ -72,6 +72,9 @@ pub struct Settings {
     pub figurines_move_list: bool,
     /// Draw engine PV piece letters as figurines. Off by default.
     pub figurines_eval: bool,
+    /// Show the analysis best-move arrows on the board (View → Analysis
+    /// arrows). On by default.
+    pub analysis_arrows: bool,
     /// The last tournament configuration, so the dialog opens where the user
     /// left it.
     pub tournament: Option<TournamentConfig>,
@@ -124,6 +127,7 @@ impl Default for Settings {
             piece_set: None,
             figurines_move_list: true,
             figurines_eval: false,
+            analysis_arrows: true,
             tournament: None,
         }
     }
@@ -161,9 +165,15 @@ impl std::fmt::Display for SettingsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SettingsError::NoLocation => f.write_str("no home folder for the settings file"),
-            SettingsError::Read { path, source } => write!(f, "could not read `{}`: {}", path.display(), source),
-            SettingsError::Parse { path, source } => write!(f, "`{}` is not valid settings: {}", path.display(), source),
-            SettingsError::Write { path, source } => write!(f, "could not write `{}`: {}", path.display(), source),
+            SettingsError::Read { path, source } => {
+                write!(f, "could not read `{}`: {}", path.display(), source)
+            }
+            SettingsError::Parse { path, source } => {
+                write!(f, "`{}` is not valid settings: {}", path.display(), source)
+            }
+            SettingsError::Write { path, source } => {
+                write!(f, "could not write `{}`: {}", path.display(), source)
+            }
         }
     }
 }
@@ -172,7 +182,9 @@ impl std::error::Error for SettingsError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             SettingsError::NoLocation => None,
-            SettingsError::Read { source, .. } | SettingsError::Write { source, .. } => Some(source),
+            SettingsError::Read { source, .. } | SettingsError::Write { source, .. } => {
+                Some(source)
+            }
             SettingsError::Parse { source, .. } => Some(source),
         }
     }
@@ -256,8 +268,14 @@ mod tests {
         };
         save_sync(&path, &first).unwrap();
         save_sync(&path, &Settings::default()).unwrap();
-        assert!(!load_sync(&path).unwrap().book_in_games, "the second save wins");
-        assert!(!path.with_extension("json.tmp").exists(), "no temporary file is left");
+        assert!(
+            !load_sync(&path).unwrap().book_in_games,
+            "the second save wins"
+        );
+        assert!(
+            !path.with_extension("json.tmp").exists(),
+            "no temporary file is left"
+        );
     }
 
     #[test]
@@ -279,9 +297,32 @@ mod tests {
     #[test]
     fn session_logging_is_on_by_default_and_round_trips() {
         let settings = Settings::default();
-        assert!(settings.session_log, "session logging is on unless turned off");
+        assert!(
+            settings.session_log,
+            "session logging is on unless turned off"
+        );
         assert!(parse(&to_json(&settings)).unwrap().session_log);
         assert!(!parse(r#"{"session_log":false}"#).unwrap().session_log);
+    }
+
+    #[test]
+    fn analysis_arrows_are_on_by_default_and_round_trips() {
+        assert!(
+            Settings::default().analysis_arrows,
+            "the best-move arrows are on unless turned off"
+        );
+        assert!(
+            parse(&to_json(&Settings::default()))
+                .unwrap()
+                .analysis_arrows
+        );
+        assert!(
+            !parse(r#"{"analysis_arrows":false}"#)
+                .unwrap()
+                .analysis_arrows
+        );
+        // A settings file from before the field keeps the default (on).
+        assert!(parse("{}").unwrap().analysis_arrows);
     }
 
     #[test]
@@ -334,14 +375,24 @@ mod tests {
         };
         let restored = parse(&to_json(&settings)).unwrap();
         assert_eq!(restored.piece_set.as_deref(), Some("staunty"));
-        assert_eq!(Settings::default().piece_set, None, "the default is cburnett");
+        assert_eq!(
+            Settings::default().piece_set,
+            None,
+            "the default is cburnett"
+        );
     }
 
     #[test]
     fn figurine_defaults_follow_the_move_list_and_not_the_evaluation() {
         let settings = Settings::default();
-        assert!(settings.figurines_move_list, "the move list uses figurines by default");
-        assert!(!settings.figurines_eval, "the engine PV is plain SAN by default");
+        assert!(
+            settings.figurines_move_list,
+            "the move list uses figurines by default"
+        );
+        assert!(
+            !settings.figurines_eval,
+            "the engine PV is plain SAN by default"
+        );
         let restored = parse(&to_json(&settings)).unwrap();
         assert!(restored.figurines_move_list);
         assert!(!restored.figurines_eval);
@@ -372,7 +423,11 @@ mod tests {
         };
         let restored = parse(&to_json(&settings)).unwrap();
         assert_eq!(restored.tournament, settings.tournament);
-        assert_eq!(Settings::default().tournament, None, "no tournament saved yet");
+        assert_eq!(
+            Settings::default().tournament,
+            None,
+            "no tournament saved yet"
+        );
     }
 
     #[test]
@@ -382,7 +437,10 @@ mod tests {
             ..Settings::default()
         };
         let restored = parse(&to_json(&settings)).unwrap();
-        assert_eq!(restored.engines[0], Some(PathBuf::from("/opt/sf/stockfish")));
+        assert_eq!(
+            restored.engines[0],
+            Some(PathBuf::from("/opt/sf/stockfish"))
+        );
         assert_eq!(restored.engines[1], None);
     }
 
@@ -394,8 +452,15 @@ mod tests {
         };
         let restored = parse(&to_json(&settings)).unwrap();
         assert_eq!(restored.tablebase_path.as_deref(), Some("/tb/5:/tb/6"));
-        assert_eq!(Settings::default().tablebase_path, None, "no tablebases by default");
-        assert!(restored.tablebases_in_engines, "a configured path is used by default");
+        assert_eq!(
+            Settings::default().tablebase_path,
+            None,
+            "no tablebases by default"
+        );
+        assert!(
+            restored.tablebases_in_engines,
+            "a configured path is used by default"
+        );
 
         let switched_off = Settings {
             tablebases_in_engines: false,
@@ -416,14 +481,20 @@ mod tests {
         };
         let restored = parse(&to_json(&settings)).unwrap();
         assert_eq!(restored.engine_history, settings.engine_history);
-        assert!(Settings::default().engine_history.is_empty(), "no history yet");
+        assert!(
+            Settings::default().engine_history.is_empty(),
+            "no history yet"
+        );
     }
 
     #[test]
     fn missing_fields_take_their_defaults() {
         let settings = parse("{}").unwrap();
         assert_eq!(settings, Settings::default());
-        assert!(!settings.book_in_games, "book play is off until a book is loaded");
+        assert!(
+            !settings.book_in_games,
+            "book play is off until a book is loaded"
+        );
         assert!(
             settings.tablebases_in_engines,
             "a settings file from before the switch keeps using a configured path"

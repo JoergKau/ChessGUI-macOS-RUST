@@ -185,7 +185,11 @@ mod tests {
             let state = TextEditState::load(ui.ctx(), id).expect("the cursor state is stored");
             let range = state.cursor.char_range().expect("the caret is set");
             assert!(range.is_empty());
-            assert_eq!(usize::from(range.primary.index), 1, "the caret sits where the cut began");
+            assert_eq!(
+                usize::from(range.primary.index),
+                1,
+                "the caret sits where the cut began"
+            );
         });
     }
 
@@ -210,7 +214,7 @@ mod tests {
     /// on the release. The press frame must put the selection back.
     #[test]
     fn a_right_press_inside_the_selection_keeps_it() {
-        use egui::{Event, Modifiers, PointerButton, Pos2, Rect, vec2};
+        use egui::{vec2, Event, Modifiers, PointerButton, Pos2, Rect};
 
         let ctx = egui::Context::default();
         let id = Id::unique("right_press_test");
@@ -232,10 +236,9 @@ mod tests {
         )
         .drop_without_applying_deltas();
         let mut state = TextEditState::load(&ctx, id).unwrap_or_default();
-        state.cursor.set_char_range(Some(CCursorRange::two(
-            CCursor::new(2),
-            CCursor::new(5),
-        )));
+        state
+            .cursor
+            .set_char_range(Some(CCursorRange::two(CCursor::new(2), CCursor::new(5))));
         state.store(&ctx, id);
 
         // Frame 2: a secondary press inside the selection (characters 2..5
@@ -258,8 +261,7 @@ mod tests {
             |ui| {
                 egui::CentralPanel::default().show(ui, |ui| {
                     let before = selection_before(ui, id);
-                    let response =
-                        ui.put(field_rect, egui::TextEdit::singleline(&mut text).id(id));
+                    let response = ui.put(field_rect, egui::TextEdit::singleline(&mut text).id(id));
                     after_edit(ui, id, &mut text, before, &response);
                 });
             },
@@ -268,7 +270,10 @@ mod tests {
 
         let state = TextEditState::load(&ctx, id).expect("the cursor state is stored");
         let range = state.cursor.char_range().expect("a selection is set");
-        assert!(!range.is_empty(), "the right-click must not collapse the selection");
+        assert!(
+            !range.is_empty(),
+            "the right-click must not collapse the selection"
+        );
         assert_eq!(usize::from(range.sorted_cursors()[0].index), 2);
         assert_eq!(usize::from(range.sorted_cursors()[1].index), 5);
     }
@@ -277,7 +282,7 @@ mod tests {
     /// and see the text change. This is the interaction the owner reported.
     #[test]
     fn right_click_then_cut_in_the_menu_removes_the_selection() {
-        use egui::{Event, Modifiers, PointerButton, Pos2, Rect, vec2};
+        use egui::{vec2, Event, Modifiers, PointerButton, Pos2, Rect};
 
         let ctx = egui::Context::default();
         let id = Id::unique("menu_cut_test");
@@ -307,10 +312,9 @@ mod tests {
         // Frame 1: draw the field, then select characters 1..4.
         frame(Vec::new(), &mut text);
         let mut state = TextEditState::load(&ctx, id).unwrap_or_default();
-        state.cursor.set_char_range(Some(CCursorRange::two(
-            CCursor::new(1),
-            CCursor::new(4),
-        )));
+        state
+            .cursor
+            .set_char_range(Some(CCursorRange::two(CCursor::new(1), CCursor::new(4))));
         state.store(&ctx, id);
 
         // Right-click inside the selection: press, then release.
@@ -366,7 +370,7 @@ mod tests {
     /// field focus back, with the selection restored so the paste replaces it.
     #[test]
     fn right_click_then_paste_in_the_menu_requests_the_clipboard() {
-        use egui::{Event, Modifiers, PointerButton, Pos2, Rect, vec2};
+        use egui::{vec2, Event, Modifiers, PointerButton, Pos2, Rect};
 
         let ctx = egui::Context::default();
         let id = Id::unique("menu_paste_test");
@@ -395,10 +399,9 @@ mod tests {
 
         frame(Vec::new(), &mut text);
         let mut state = TextEditState::load(&ctx, id).unwrap_or_default();
-        state.cursor.set_char_range(Some(CCursorRange::two(
-            CCursor::new(1),
-            CCursor::new(4),
-        )));
+        state
+            .cursor
+            .set_char_range(Some(CCursorRange::two(CCursor::new(1), CCursor::new(4))));
         state.store(&ctx, id);
 
         let pos = Pos2::new(field_rect.left() + 20.0, field_rect.center().y);
@@ -447,15 +450,27 @@ mod tests {
             .flat_map(|viewport| viewport.commands.iter())
             .any(|command| matches!(command, ViewportCommand::RequestPaste));
         let state = TextEditState::load(&ctx, id).expect("the cursor state is stored");
-        let range = state.cursor.char_range().expect("the selection is restored");
+        let range = state
+            .cursor
+            .char_range()
+            .expect("the selection is restored");
         output.drop_without_applying_deltas();
 
-        assert!(requested, "Paste must request the clipboard from the integration");
+        assert!(
+            requested,
+            "Paste must request the clipboard from the integration"
+        );
         assert_eq!(
-            (usize::from(range.sorted_cursors()[0].index), usize::from(range.sorted_cursors()[1].index)),
+            (
+                usize::from(range.sorted_cursors()[0].index),
+                usize::from(range.sorted_cursors()[1].index)
+            ),
             (1, 4),
             "the paste replaces the selection that was there when the menu opened"
         );
-        assert!(ctx.memory(|memory| memory.has_focus(id)), "the field takes focus for the paste");
+        assert!(
+            ctx.memory(|memory| memory.has_focus(id)),
+            "the field takes focus for the paste"
+        );
     }
 }

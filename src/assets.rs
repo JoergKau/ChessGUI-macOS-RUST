@@ -164,7 +164,9 @@ impl Assets {
         pieces: Option<&str>,
     ) -> Result<Self, AssetError> {
         let board_dir = asset_root.join("images").join("board");
-        let requested = board.filter(|file| is_board_image(file)).unwrap_or(DEFAULT_BOARD_IMAGE);
+        let requested = board
+            .filter(|file| is_board_image(file))
+            .unwrap_or(DEFAULT_BOARD_IMAGE);
 
         // (1) Board texture, falling back to the default if a saved theme
         // has gone missing or is not decodable.
@@ -240,9 +242,16 @@ pub fn board_themes_from(asset_root: &Path) -> Vec<BoardTheme> {
 fn is_board_image(file: &str) -> bool {
     let lower = file.to_lowercase();
     let supported = lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg");
-    let overlay = [".thumbnail.", ".orig.", ".last-move.", ".move-dest.", ".selected.", ".current-premove."]
-        .iter()
-        .any(|marker| lower.contains(marker));
+    let overlay = [
+        ".thumbnail.",
+        ".orig.",
+        ".last-move.",
+        ".move-dest.",
+        ".selected.",
+        ".current-premove.",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker));
     supported && !overlay
 }
 
@@ -442,9 +451,7 @@ fn load_board(ctx: &Context, path: &Path) -> Result<BoardTexture, AssetError> {
     let image = decode_board(path)?;
     let [width, height] = image.size;
     let handle = ctx.load_texture(
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("board"),
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("board"),
         image,
         TextureOptions::LINEAR,
     );
@@ -491,16 +498,10 @@ fn load_pieces(
 }
 
 /// Load a single piece SVG, rasterise it, and upload it to the GPU.
-fn load_piece_svg(
-    ctx: &Context,
-    path: &Path,
-    target_px: u32,
-) -> Result<TextureHandle, AssetError> {
+fn load_piece_svg(ctx: &Context, path: &Path, target_px: u32) -> Result<TextureHandle, AssetError> {
     let color_image = rasterise_piece_svg(path, target_px)?;
     let handle = ctx.load_texture(
-        path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("piece"),
+        path.file_stem().and_then(|s| s.to_str()).unwrap_or("piece"),
         color_image,
         TextureOptions::LINEAR,
     );
@@ -523,11 +524,12 @@ fn rasterise_piece_svg(path: &Path, target_px: u32) -> Result<ColorImage, AssetE
         source,
     })?;
 
-    let tree = usvg::Tree::from_data(&bytes, &usvg::Options::default())
-        .map_err(|source| AssetError::SvgParse {
+    let tree = usvg::Tree::from_data(&bytes, &usvg::Options::default()).map_err(|source| {
+        AssetError::SvgParse {
             path: path.to_path_buf(),
             source,
-        })?;
+        }
+    })?;
 
     let src_size = tree.size();
     let src_w = src_size.width().max(1.0);
@@ -684,14 +686,9 @@ pub enum AssetError {
         source: image::ImageError,
     },
     /// `usvg::Tree::from_data` rejected the SVG.
-    SvgParse {
-        path: PathBuf,
-        source: usvg::Error,
-    },
+    SvgParse { path: PathBuf, source: usvg::Error },
     /// A zero-sized image — almost certainly corruption.
-    Empty {
-        path: PathBuf,
-    },
+    Empty { path: PathBuf },
     /// `tiny_skia::Pixmap::new` returned `None` (oversize dimension).
     Alloc {
         path: PathBuf,
@@ -709,24 +706,18 @@ pub enum AssetError {
 impl std::fmt::Display for AssetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AssetError::OpenRead { path, source } => write!(
-                f,
-                "failed to read asset `{}`: {}",
-                path.display(),
-                source
-            ),
+            AssetError::OpenRead { path, source } => {
+                write!(f, "failed to read asset `{}`: {}", path.display(), source)
+            }
             AssetError::Decode { path, source } => write!(
                 f,
                 "failed to decode PNG at `{}`: {}",
                 path.display(),
                 source
             ),
-            AssetError::SvgParse { path, source } => write!(
-                f,
-                "failed to parse SVG at `{}`: {}",
-                path.display(),
-                source
-            ),
+            AssetError::SvgParse { path, source } => {
+                write!(f, "failed to parse SVG at `{}`: {}", path.display(), source)
+            }
             AssetError::Empty { path } => write!(
                 f,
                 "asset `{}` decoded to a zero-sized image",
@@ -782,11 +773,19 @@ mod tests {
     #[test]
     fn piece_filename_is_svg() {
         assert_eq!(
-            PieceId { color: PieceColor::White, kind: PieceKind::King }.filename(),
+            PieceId {
+                color: PieceColor::White,
+                kind: PieceKind::King
+            }
+            .filename(),
             "wK.svg"
         );
         assert_eq!(
-            PieceId { color: PieceColor::Black, kind: PieceKind::Pawn }.filename(),
+            PieceId {
+                color: PieceColor::Black,
+                kind: PieceKind::Pawn
+            }
+            .filename(),
             "bP.svg"
         );
         // No leftover PNG filenames should be reachable through the public API.
@@ -862,7 +861,10 @@ mod tests {
             "maple.svg",
             "notes.txt",
         ] {
-            assert!(!files.contains(&bad), "{bad} must not be offered as a theme");
+            assert!(
+                !files.contains(&bad),
+                "{bad} must not be offered as a theme"
+            );
         }
         let labels: Vec<&str> = themes.iter().map(|theme| theme.label.as_str()).collect();
         let mut sorted = labels.clone();
@@ -908,7 +910,10 @@ mod tests {
         let names: Vec<&str> = sets.iter().map(|set| set.name.as_str()).collect();
         assert!(names.contains(&"cburnett"));
         assert!(names.contains(&"staunty"));
-        assert!(!names.contains(&"partial"), "a set with missing pieces is skipped");
+        assert!(
+            !names.contains(&"partial"),
+            "a set with missing pieces is skipped"
+        );
     }
 
     #[test]
@@ -939,10 +944,7 @@ mod tests {
         let exe_dir = dir.path().join("exe-side").join("target").join("debug");
         std::fs::create_dir_all(&exe_dir).unwrap();
 
-        let chosen = resolve_asset_root_from(
-            Some(override_root.to_str().unwrap()),
-            Some(&exe_dir),
-        );
+        let chosen = resolve_asset_root_from(Some(override_root.to_str().unwrap()), Some(&exe_dir));
         assert_eq!(chosen, override_root);
         assert_ne!(chosen, exe_root);
     }
@@ -977,8 +979,16 @@ mod tests {
         let resources = contents.join("Resources");
         std::fs::create_dir_all(resources.join("images").join("board")).unwrap();
         std::fs::create_dir_all(resources.join("piece").join("cburnett")).unwrap();
-        std::fs::write(resources.join("images").join("board").join("blue.png"), b"x").unwrap();
-        std::fs::write(resources.join("piece").join("cburnett").join("wK.svg"), b"x").unwrap();
+        std::fs::write(
+            resources.join("images").join("board").join("blue.png"),
+            b"x",
+        )
+        .unwrap();
+        std::fs::write(
+            resources.join("piece").join("cburnett").join("wK.svg"),
+            b"x",
+        )
+        .unwrap();
         let macos = contents.join("MacOS");
         std::fs::create_dir_all(&macos).unwrap();
 

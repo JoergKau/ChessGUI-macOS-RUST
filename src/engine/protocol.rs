@@ -62,10 +62,7 @@ pub enum EngineCommand {
     /// option and sends `setoption name <n>` without a value.
     // Complete UCI command set: the engine-options dialog (Phase 6) sends this.
     #[allow(dead_code)]
-    SetOption {
-        name: String,
-        value: Option<String>,
-    },
+    SetOption { name: String, value: Option<String> },
     /// `position [startpos | fen <FEN>] moves <u1> <u2> …`.
     SetPosition {
         /// `None` ⇒ `startpos`. Some engines prefer the explicit
@@ -170,9 +167,8 @@ impl GoControl {
     /// Render the sub-control as the `go …` suffix.
     pub fn to_wire_string(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
-        let arg = |val: &dyn std::fmt::Display, name: &str| -> String {
-            format!("{} {}", name, val)
-        };
+        let arg =
+            |val: &dyn std::fmt::Display, name: &str| -> String { format!("{} {}", name, val) };
         match self {
             GoControl::Infinite => parts.push("infinite".into()),
             GoControl::Depth(n) => parts.push(arg(&n, "depth")),
@@ -318,11 +314,7 @@ pub enum UciOptionKind {
     /// `type check` — boolean toggle.
     Check { default: bool },
     /// `type spin` — integer with bounds.
-    Spin {
-        default: i64,
-        min: i64,
-        max: i64,
-    },
+    Spin { default: i64, min: i64, max: i64 },
     /// `type combo` — one of a list of strings (and optionally a default).
     Combo {
         default: String,
@@ -354,9 +346,7 @@ pub enum EngineError {
     /// The command queue is full: the engine is not reading its input.
     QueueFull,
     /// Generic I/O error on the subprocess pipe.
-    Io {
-        source: std::io::Error,
-    },
+    Io { source: std::io::Error },
 }
 
 impl std::fmt::Display for EngineError {
@@ -429,8 +419,14 @@ mod tests {
     fn go_control_wire_round_trip_examples() {
         assert_eq!(GoControl::Infinite.to_wire_string(), "go infinite");
         assert_eq!(GoControl::Depth(20).to_wire_string(), "go depth 20");
-        assert_eq!(GoControl::Nodes(1_000_000).to_wire_string(), "go nodes 1000000");
-        assert_eq!(GoControl::MoveTime(5_000).to_wire_string(), "go movetime 5000");
+        assert_eq!(
+            GoControl::Nodes(1_000_000).to_wire_string(),
+            "go nodes 1000000"
+        );
+        assert_eq!(
+            GoControl::MoveTime(5_000).to_wire_string(),
+            "go movetime 5000"
+        );
         assert_eq!(
             GoControl::Clock {
                 wtime: 300_000,

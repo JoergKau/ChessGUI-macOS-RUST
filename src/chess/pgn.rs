@@ -204,10 +204,13 @@ pub fn parse_pgn_with_report(text: &str) -> Result<PgnImport, PgnError> {
                 san: token.clone(),
             }
         })?;
-        let m = parsed.san.to_move(&position).map_err(|_| PgnError::IllegalMove {
-            ply: index + 1,
-            san: token.clone(),
-        })?;
+        let m = parsed
+            .san
+            .to_move(&position)
+            .map_err(|_| PgnError::IllegalMove {
+                ply: index + 1,
+                san: token.clone(),
+            })?;
         game.apply_move(m).map_err(|_| PgnError::IllegalMove {
             ply: index + 1,
             san: token.clone(),
@@ -229,10 +232,7 @@ pub fn parse_pgn_with_report(text: &str) -> Result<PgnImport, PgnError> {
 /// The result token at the end of the movetext, when the `Result` tag is
 /// missing or `*`.
 fn result_from_movetext(movetext: &str) -> Option<PgnResult> {
-    movetext
-        .split_whitespace()
-        .rev()
-        .find_map(PgnResult::parse)
+    movetext.split_whitespace().rev().find_map(PgnResult::parse)
 }
 
 /// The result token of a PGN game, when the file states one.
@@ -505,7 +505,11 @@ fn movetext_tokens(movetext: &str) -> (Vec<String>, usize, usize) {
         if current.is_empty() {
             return;
         }
-        if depth == 0 && !is_move_number(current) && !is_result(current) && !current.starts_with('$') {
+        if depth == 0
+            && !is_move_number(current)
+            && !is_result(current)
+            && !current.starts_with('$')
+        {
             let cleaned = strip_move_number(current)
                 .trim_end_matches(['!', '?'])
                 .to_string();
@@ -647,7 +651,10 @@ mod tests {
     }
 
     fn sans(game: &GameState) -> Vec<String> {
-        game.active_history().iter().map(|p| p.san.to_string()).collect()
+        game.active_history()
+            .iter()
+            .map(|p| p.san.to_string())
+            .collect()
     }
 
     #[test]
@@ -737,7 +744,11 @@ mod tests {
         assert_eq!(sans(&import.game), vec!["e4", "e5", "Nf3"]);
         assert_eq!(
             import.ignored,
-            IgnoredContent { variations: 1, comments: 2, games: 1 }
+            IgnoredContent {
+                variations: 1,
+                comments: 2,
+                games: 1
+            }
         );
         assert_eq!(
             import.ignored.summary().as_deref(),
@@ -806,9 +817,16 @@ mod tests {
     #[test]
     fn result_tag_follows_the_ending_the_game_loop_gives() {
         let mut game = GameState::new();
-        game.play_squares(Square::from_ascii(b"e2").unwrap(), Square::from_ascii(b"e4").unwrap(), None).unwrap();
+        game.play_squares(
+            Square::from_ascii(b"e2").unwrap(),
+            Square::from_ascii(b"e4").unwrap(),
+            None,
+        )
+        .unwrap();
         assert!(to_pgn(&game, None).contains("[Result \"*\"]"));
-        let resigned = Some(Ending::Resigned { loser: crate::chess::PieceColor::Black });
+        let resigned = Some(Ending::Resigned {
+            loser: crate::chess::PieceColor::Black,
+        });
         assert_eq!(result_token(&game, resigned), "1-0");
         let text = to_pgn(&game, Some(Ending::DrawAgreed));
         assert!(text.contains("[Result \"1/2-1/2\"]"));
@@ -839,11 +857,29 @@ mod tests {
         // The bundled PGN: CRLF endings, `1.d4` style numbers, `O-O`,
         // `Rxd1+` and a result token directly after the last move.
         let import = parse_pgn_with_report(&bundled_pgn("WorldChamp1972.pgn")).unwrap();
-        assert_eq!(import.game.total_plies(), 111, "55 full moves and White's 56th");
-        assert_eq!(import.game.active_history().last().map(|p| p.san.to_string()).as_deref(), Some("Kd6"));
-        assert_eq!(import.ignored.variations, 0, "no variations in the first game");
+        assert_eq!(
+            import.game.total_plies(),
+            111,
+            "55 full moves and White's 56th"
+        );
+        assert_eq!(
+            import
+                .game
+                .active_history()
+                .last()
+                .map(|p| p.san.to_string())
+                .as_deref(),
+            Some("Kd6")
+        );
+        assert_eq!(
+            import.ignored.variations, 0,
+            "no variations in the first game"
+        );
         assert_eq!(import.ignored.comments, 0, "no comments in the first game");
-        assert_eq!(import.ignored.games, 20, "the other games of the collection are skipped");
+        assert_eq!(
+            import.ignored.games, 20,
+            "the other games of the collection are skipped"
+        );
     }
 
     #[test]
@@ -864,7 +900,10 @@ mod tests {
     #[test]
     fn quoted_tag_values_survive_escaping() {
         let (tags, _, _) = split_tags_and_movetext("[Event \"A \\\"quoted\\\" name\"]\n\n*\n");
-        assert_eq!(tags, vec![("Event".to_string(), "A \"quoted\" name".to_string())]);
+        assert_eq!(
+            tags,
+            vec![("Event".to_string(), "A \"quoted\" name".to_string())]
+        );
     }
 
     #[test]
@@ -875,14 +914,24 @@ mod tests {
         }
         game.goto_start();
         let text = to_pgn(&game, None);
-        assert!(text.contains("1. e4 e5 2. Nf3 Nc6 *"), "saved text: {}", text);
+        assert!(
+            text.contains("1. e4 e5 2. Nf3 Nc6 *"),
+            "saved text: {}",
+            text
+        );
         assert_eq!(game.cur_ply(), 0, "saving must not move the cursor");
     }
 
     #[test]
     fn the_player_tags_are_read_and_may_be_missing() {
-        let with = parse_pgn_with_report("[White \"Karpov, Anatoly\"]\n[Black \"Kasparov\"]\n\n1. e4 e5 *\n").unwrap();
-        assert_eq!(with.players, ("Karpov, Anatoly".to_string(), "Kasparov".to_string()));
+        let with = parse_pgn_with_report(
+            "[White \"Karpov, Anatoly\"]\n[Black \"Kasparov\"]\n\n1. e4 e5 *\n",
+        )
+        .unwrap();
+        assert_eq!(
+            with.players,
+            ("Karpov, Anatoly".to_string(), "Kasparov".to_string())
+        );
         let without = parse_pgn_with_report("1. e4 e5 *\n").unwrap();
         assert_eq!(without.players, (String::new(), String::new()));
     }
