@@ -38,6 +38,9 @@ pub struct EngineView {
     pub search_white_to_move: bool,
     /// Move number of that position, for the PV numbering.
     pub search_fullmove: u32,
+    /// FEN of the position the statistics belong to. `None` before the first
+    /// search; it does not follow a later target change.
+    pub searched_fen: Option<String>,
 }
 
 /// A running engine plus its analysis state.
@@ -288,6 +291,7 @@ impl EngineHost {
             stats: self.analysis.stats().clone(),
             search_white_to_move: self.white_to_move,
             search_fullmove: self.search_fullmove,
+            searched_fen: self.analysis.searched_fen().map(str::to_string),
         }
     }
 

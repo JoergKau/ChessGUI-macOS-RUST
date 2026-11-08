@@ -80,6 +80,10 @@ pub struct AnalysisSession {
     search_is_evaluation: bool,
     /// Statistics of the current search.
     stats: EngineStats,
+    /// FEN of the position the [statistics](Self::stats) belong to. Set when a
+    /// search starts; it stays behind while the target changes, so a stale
+    /// search cannot be mistaken for one on the displayed position.
+    searched_fen: Option<String>,
     /// Commands (`ucinewgame`, `setoption`) that must wait for a running search
     /// to stop. They are sent in order after its `bestmove`.
     pending: Vec<EngineCommand>,
@@ -121,6 +125,7 @@ impl AnalysisSession {
             pending_evaluation: None,
             search_is_evaluation: false,
             stats: EngineStats::default(),
+            searched_fen: None,
             pending: Vec::new(),
             options: Vec::new(),
             settings: BTreeMap::new(),
@@ -323,6 +328,12 @@ impl AnalysisSession {
         &self.stats
     }
 
+    /// FEN of the position the current statistics belong to. `None` before the
+    /// first search.
+    pub fn searched_fen(&self) -> Option<&str> {
+        self.searched_fen.as_deref()
+    }
+
     /// Engine name from the handshake, when known.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
@@ -378,6 +389,7 @@ impl AnalysisSession {
             SearchGoal::Rest => return Vec::new(),
         };
         self.stats = EngineStats::default();
+        self.searched_fen = Some(fen.clone());
         self.phase = Phase::Searching;
         self.search_is_move = matches!(self.goal, SearchGoal::Move(_));
         self.search_is_evaluation = matches!(self.goal, SearchGoal::Evaluate(_));
@@ -458,6 +470,27 @@ mod tests {
             ]
         );
         assert_eq!(s.status(), AnalysisStatus::Thinking);
+    }
+
+    #[test]
+    fn a_search_remembers_the_position_its_statistics_belong_to() {
+        let mut s = ready_session();
+        s.set_target(START, SearchGoal::Analyse);
+        s.set_enabled(true);
+        assert_eq!(
+            s.searched_fen(),
+            Some(START),
+            "the statistics belong to the analysed position"
+        );
+        // Retargeting stops the old search; its statistics still belong to the
+        // old position until the next search starts.
+        s.set_target(AFTER_E4, SearchGoal::Analyse);
+        assert_eq!(s.searched_fen(), Some(START));
+        s.on_event(&EngineEvent::BestMove {
+            best_move: None,
+            ponder: None,
+        });
+        assert_eq!(s.searched_fen(), Some(AFTER_E4));
     }
 
     #[test]

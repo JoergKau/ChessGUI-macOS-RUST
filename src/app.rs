@@ -3919,17 +3919,29 @@ impl SiliconBoardApp {
     /// (a new evaluation) moves the arrow. When both engines choose the same
     /// move only one arrow is drawn, deduped by from/to squares; engine A's
     /// green arrow wins.
+    ///
+    /// An arrow belongs to a search that is **running right now** on the
+    /// displayed position: an engine that was switched off (Abort or its card
+    /// toggle), and statistics that belong to an earlier position, draw
+    /// nothing. That keeps the board from showing a stale "best move".
     fn eval_arrows(&self) -> Vec<board_view::EvalArrow> {
         if self.mode != GameMode::Analysis || !self.settings.analysis_arrows {
             return Vec::new();
         }
+        let fen = self.game.fen();
         let mut arrows: Vec<board_view::EvalArrow> = Vec::new();
         for slot in [0usize, 1] {
+            if !self.analysis_on[slot] {
+                continue;
+            }
             let Some(host) = self.engines[slot].as_ref() else {
                 continue;
             };
             let view = host.view();
-            if view.status == AnalysisStatus::Offline {
+            if view.status != AnalysisStatus::Thinking {
+                continue;
+            }
+            if view.searched_fen.as_deref() != Some(fen.as_str()) {
                 continue;
             }
             let Some((from, to)) = view
