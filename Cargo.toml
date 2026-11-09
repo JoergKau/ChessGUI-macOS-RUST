@@ -1,6 +1,6 @@
 [package]
 name = "siliconboard"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 description = "SiliconBoard — A modern, high-performance UCI Chess GUI for Apple Silicon written in Rust"
 authors = ["SiliconBoard Contributors"]

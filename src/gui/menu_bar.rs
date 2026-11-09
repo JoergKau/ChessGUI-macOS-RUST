@@ -16,6 +16,8 @@ use crate::gui::theme;
 pub enum MenuAction {
     /// Game → New game.
     NewGame,
+    /// Game → Setup board…: edit the current position in the right panel.
+    OpenSetupBoard,
     /// Game → Start from here…: two engines play the FEN in the top bar.
     StartFromFen,
     /// An engine card's pulldown: load the `choice`-th known engine into `slot`.
@@ -176,6 +178,14 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
         ui.menu_button("Game", |ui| {
             if ui.button("New game").clicked() {
                 action = Some(MenuAction::NewGame);
+                ui.close();
+            }
+            if ui
+                .button("Setup board…")
+                .on_hover_text("Edit the position and continue from it")
+                .clicked()
+            {
+                action = Some(MenuAction::OpenSetupBoard);
                 ui.close();
             }
             let start_from_fen = ui.button("Start from here…").on_hover_text(

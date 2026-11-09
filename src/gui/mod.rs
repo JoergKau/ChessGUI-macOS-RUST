@@ -10,6 +10,7 @@
 //! ├── figurines.rs ← SAN piece letters as figurines (PV and move list)
 //! ├── pgn_panel.rs  ← bottom panel: move list and navigation
 //! ├── menu_bar.rs   ← top menu bar and FEN bar
+//! ├── setup_board.rs ← right panel: edit the position (Setup Board)
 //! ├── options_dialog.rs ← engine options window (UCI setoption)
 //! ├── tablebases.rs    ← Load tablebases… dialog (the SyzygyPath option)
 //! ├── text_field.rs    ← right-click Cut / Copy / Paste for text fields
@@ -23,6 +24,7 @@ pub mod figurines;
 pub mod menu_bar;
 pub mod options_dialog;
 pub mod pgn_panel;
+pub mod setup_board;
 pub mod tablebases;
 pub mod text_field;
 pub mod theme;

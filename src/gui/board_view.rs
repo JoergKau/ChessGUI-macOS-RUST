@@ -90,6 +90,9 @@ const PROMO_HOVER: Color32 = Color32::from_rgba_unmultiplied_const(0xff, 0xd5, 0
 /// Tint for the square the dragged piece currently hovers over.
 const DRAG_HOVER_FILL: Color32 = Color32::from_rgba_unmultiplied_const(0xdd, 0xdd, 0xdd, 0x28);
 
+/// Tint for the square under the pointer while Setup Board places pieces.
+const SETUP_HOVER_FILL: Color32 = Color32::from_rgba_unmultiplied_const(0x8b, 0xe9, 0xfd, 0x24);
+
 /// Evaluation-arrow shaft width, as a fraction of a square: 11 units in a
 /// 64-units-per-square coordinate system.
 const ARROW_LINE_WIDTH: f32 = 11.0 / 64.0;
@@ -326,6 +329,17 @@ pub enum BoardAction {
     PromotionChoice { from: Square, to: Square },
 }
 
+/// What a click in the Setup Board's editing view means.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SetupBoardAction {
+    /// Nothing happened this frame.
+    None,
+    /// Place the selected palette piece here (left click).
+    Place { square: Square },
+    /// Remove the piece here (right click). Empty squares are a no-op.
+    Remove { square: Square },
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main widget entry point
 // ─────────────────────────────────────────────────────────────────────────────
@@ -451,6 +465,57 @@ pub fn show(
         view.interaction = Interaction::Idle;
     }
 
+    action
+}
+
+/// Draw a position in the Setup Board's editing view. There is no move
+/// interaction here: a left click reports the square to place the palette
+/// piece on, a right click reports the square to clear. The caller owns the
+/// setup position, so the widget never mutates anything.
+pub fn show_setup(
+    ui: &mut Ui,
+    board: &Board,
+    assets: &Assets,
+    view: &mut BoardView,
+) -> SetupBoardAction {
+    let avail_rect = ui.available_rect_before_wrap();
+    let square = (avail_rect.width().min(avail_rect.height()) / 8.0)
+        .floor()
+        .max(1.0);
+    let board_px = square * 8.0;
+    let board_min = Pos2::new(
+        avail_rect.center().x - board_px / 2.0,
+        avail_rect.center().y - board_px / 2.0,
+    );
+    let board_rect = Rect::from_min_size(board_min, Vec2::splat(board_px));
+    let _reserved = ui.allocate_rect(board_rect, Sense::hover());
+
+    paint_board_texture(ui, board_rect, assets.board.handle());
+    paint_coordinates(ui, board_rect, square, view.white_on_bottom);
+
+    let mut action = SetupBoardAction::None;
+    for row in 0..8u8 {
+        for col in 0..8u8 {
+            let sq = coords_to_square(view.white_on_bottom, row, col);
+            let sq_rect = square_rect(board_rect, square, row, col);
+            let response = ui.allocate_rect(sq_rect, Sense::click());
+
+            if response.hovered() {
+                ui.painter().rect_filled(sq_rect, 0.0, SETUP_HOVER_FILL);
+            }
+            if let Some(piece) = board.piece_at(sq) {
+                if let Some(tex) = texture_for(&assets.pieces, piece) {
+                    draw_piece(ui.painter(), sq_rect.center(), tex, square);
+                }
+            }
+            if response.clicked() {
+                action = SetupBoardAction::Place { square: sq };
+            }
+            if response.secondary_clicked() {
+                action = SetupBoardAction::Remove { square: sq };
+            }
+        }
+    }
     action
 }
 
@@ -737,7 +802,7 @@ fn arrow_shapes(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Paint one piece sprite of `square` pixels centred on `center`.
-fn draw_piece(painter: &Painter, center: Pos2, texture: TextureId, square: f32) {
+pub(crate) fn draw_piece(painter: &Painter, center: Pos2, texture: TextureId, square: f32) {
     let rect = Rect::from_center_size(center, Vec2::splat(square));
     let options = egui::ImageOptions::default();
     let sized = SizedTexture::new(texture, Vec2::splat(square));

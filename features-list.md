@@ -13,6 +13,9 @@ the bottom — with a clean dark theme.
 - **Play from a position**: paste a FEN and choose _Game → Start from
   here…_ — two engines play on with the current time control, and the PGN
   starts from that position.
+- **Set up a position**: _Game → Setup board…_ opens a piece editor with a
+  palette, side-to-move and castling controls, a FEN field and a live validity
+  check. Apply the position on Close; Cancel leaves the game unchanged.
 - Opening-book moves in games with any PolyGlot `.bin` book you load, plus a
   suggestions box named after the ECO opening.
 - Resign, draw offers (accepted by the engine within a score margin),

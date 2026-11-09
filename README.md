@@ -15,6 +15,9 @@ flat toolbar across the top.
 - **Play from a position:** paste a FEN into the top bar and choose
   _Game → Start from here…_ — two engines play on from that position with the
   current time control, and the saved PGN starts there (`SetUp`/`FEN`).
+- **Set up a position:** _Game → Setup board…_ opens an editor with a piece
+  palette, side-to-move and castling controls, a FEN field and a validity
+  check. Close applies the position; Cancel leaves the game unchanged.
 - **Engine care:** a watchdog restarts or stops an unresponsive engine,
   launcher scripts and broken files are checked before start, failed starts
   report a reason.
@@ -25,7 +28,7 @@ flat toolbar across the top.
   figurine piece letters, persistent settings, a session log.
 
 A short summary of what SiliconBoard does lives in
-[features-list.md](features-list.md); what ships in v1.0.1 is in
+[features-list.md](features-list.md); what ships in v1.1.0 is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## The ready-to-run app
@@ -33,11 +36,11 @@ A short summary of what SiliconBoard does lives in
 The repository contains the built, signed app:
 
 ```
-SiliconBoard-1.0.1-macos-arm64.zip
+SiliconBoard-1.1.0-macos-arm64.zip
 ```
 
 It is the same bundle the packaging script produces — one folder
-(`SiliconBoard-1.0.1/`) holding `SiliconBoard.app`, `LICENSE` and this
+(`SiliconBoard-1.1.0/`) holding `SiliconBoard.app`, `LICENSE` and this
 README — and it is **committed to the repository**, so no build is needed to
 run SiliconBoard. It is for macOS on Apple Silicon.
 
@@ -57,7 +60,7 @@ The SHA-256 of the zip is printed by `./package-macos.sh` when it rebuilds
 the app and is listed with each release; check a download with:
 
 ```shell
-shasum -a 256 SiliconBoard-1.0.1-macos-arm64.zip
+shasum -a 256 SiliconBoard-1.1.0-macos-arm64.zip
 ```
 
 ## Requirements
@@ -137,6 +140,38 @@ to every loaded engine — and to every engine loaded later — as the
   `Found 510 WDL and 510 DTZ tablebase files (up to 6-man)`. The files and
   what to download are described at
   [syzygy-tables.info](https://syzygy-tables.info/).
+
+## Session log (troubleshooting)
+
+SiliconBoard writes one log file per run to
+`~/Library/Logs/SiliconBoard/`, named
+`siliconboard-<UTC time>.log`. It records start-up and settings messages,
+engine life-cycle events, the UCI commands and replies exchanged with each
+engine, engine stderr, and errors. _Engine → Session log_ switches file
+logging at runtime; it is on by default and the choice is kept in the
+settings.
+
+The newest five logs are kept. A log that reaches 5 MB is continued in
+`-2.log`, `-3.log`, …, so the folder stays at about 25 MB.
+
+To look at the logs:
+
+```shell
+open ~/Library/Logs/SiliconBoard
+```
+
+The newest file is the run you were in. Search for `WARN` and `ERROR` first,
+then for the engine's file name. For a bug report, attach the newest log and
+describe what you did.
+
+Two environment variables change logging for one run:
+
+- `SILICONBOARD_LOG=trace` also records every engine line and the
+  `isready` / `readyok` heartbeat. The default file filter is
+  `info,siliconboard::engine=debug,siliconboard::app=debug`.
+- `SILICONBOARD_LOG_FILE=/path/to/file.log` writes one named file instead of
+  the per-run log. That file is truncated at start-up and is not rotated or
+  pruned.
 
 ## Release as a macOS `.app` bundle
 

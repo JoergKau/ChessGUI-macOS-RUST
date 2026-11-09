@@ -1,5 +1,26 @@
 # SiliconBoard — Release Notes
 
+## v1.1.0
+
+**Setup Board:** _Game → Setup board…_ opens a position editor in the right
+dashboard, in place of the engine cards. Pick a piece from the palette and
+left-click a square to place it; right-click removes a piece. Clear board,
+the side-to-move combo and the four castling-right checkboxes cover the rest.
+The FEN field follows every edit and also accepts a pasted position, and the
+editor lists every reason a position cannot be played. Close applies a valid
+position as a fresh game; Cancel leaves the current game unchanged.
+
+**Engine recovery:** an engine killed by the watchdog is now restarted even
+after its slot has turned offline, so its evaluation and analysis arrow come
+back instead of staying frozen.
+
+**Palette contrast:** the Setup Board piece palette uses a light-grey backing,
+so black pieces stay visible against the dark panel.
+
+**Documentation:** the README now has a short session-log section, covering the
+log location, rotation, the **Engine → Session log** switch and the
+`SILICONBOARD_LOG` / `SILICONBOARD_LOG_FILE` overrides.
+
 ## v1.0.1
 
 **New in analysis mode:** each engine's current best move is drawn as an arrow

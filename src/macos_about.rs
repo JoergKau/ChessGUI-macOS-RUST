@@ -29,8 +29,8 @@ const COPYRIGHT: &str = "Copyright © 2026 JoKa. MIT License.";
 const APP_NAME: &str = "SiliconBoard";
 
 /// Application version shown in the About panel.
-/// Shown as "SiliconBoard 1.0.1" in the About panel.
-const APP_VERSION: &str = "1.0.1";
+/// Shown as "SiliconBoard 1.1.0" in the About panel.
+const APP_VERSION: &str = "1.1.0";
 
 /// Credits block: two project lines, plus the copyright when the binary runs
 /// without a bundle (`cargo run`), where `Info.plist` cannot supply it.
