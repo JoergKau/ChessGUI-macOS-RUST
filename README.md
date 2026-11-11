@@ -28,7 +28,7 @@ flat toolbar across the top.
   figurine piece letters, persistent settings, a session log.
 
 A short summary of what SiliconBoard does lives in
-[features-list.md](features-list.md); what ships in v1.1.0 is in
+[features-list.md](features-list.md); what ships in v1.2.0 is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## The ready-to-run app
@@ -36,11 +36,11 @@ A short summary of what SiliconBoard does lives in
 The repository contains the built, signed app:
 
 ```
-SiliconBoard-1.1.0-macos-arm64.zip
+SiliconBoard-1.2.0-macos-arm64.zip
 ```
 
 It is the same bundle the packaging script produces — one folder
-(`SiliconBoard-1.1.0/`) holding `SiliconBoard.app`, `LICENSE` and this
+(`SiliconBoard-1.2.0/`) holding `SiliconBoard.app`, `LICENSE` and this
 README — and it is **committed to the repository**, so no build is needed to
 run SiliconBoard. It is for macOS on Apple Silicon.
 
@@ -60,7 +60,7 @@ The SHA-256 of the zip is printed by `./package-macos.sh` when it rebuilds
 the app and is listed with each release; check a download with:
 
 ```shell
-shasum -a 256 SiliconBoard-1.1.0-macos-arm64.zip
+shasum -a 256 SiliconBoard-1.2.0-macos-arm64.zip
 ```
 
 ## Requirements

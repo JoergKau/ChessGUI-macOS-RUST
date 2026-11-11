@@ -53,10 +53,12 @@ use tokio::sync::{broadcast, mpsc};
 // EngineProcess
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Capacity for the broadcast channel of stdout lines.
-/// Sized for high-volume engines (Stockfish can emit thousands of `info`
-/// lines at depth 30+, and a missed bestmove would be catastrophic).
-const BROADCAST_BUFFER: usize = 10_000;
+/// Capacity for the broadcast channel of stdout lines. The UI host uses the
+/// lossless per-engine `mpsc` stream, not this broadcast; only tests and
+/// external observers subscribe. A lagging observer therefore cannot lose a
+/// `bestmove` for the app, and a deep buffer would only hold heap-heavy PV
+/// vectors for nobody. 256 lines is plenty for an observer.
+const BROADCAST_BUFFER: usize = 256;
 
 /// Capacity for the command mpsc. Sized for a UI frame's worth of commands
 /// (stop + position + go, for several engines) without dropping any.
@@ -499,8 +501,17 @@ async fn run_reader(
                             None => *pending = Some(stats),
                         }
                     }
-                    other => {
-                        let _ = lines.send(other);
+                    ParsedUciLine::Event(event) => {
+                        // Search-boundary events (`bestmove`, `readyok`,
+                        // `uciok`, `Terminated`) are a handful per search, so
+                        // the lossless channel cannot grow under a fast engine.
+                        let _ = lines.send(ParsedUciLine::Event(event));
+                    }
+                    ParsedUciLine::Unknown(_) | ParsedUciLine::ParseError { .. } => {
+                        // Noise is already in the session log above. It has no
+                        // consumer in the UI, so it is not queued — this is the
+                        // drain cap for the one line source that could repeat
+                        // without bound.
                     }
                 }
                 if let (Some(wake), Some(urgent)) = (&wake, wake_now) {

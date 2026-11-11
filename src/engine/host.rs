@@ -21,6 +21,13 @@ use crate::engine::protocol::{
 use crate::engine::watchdog::{StallReason, Timing, Watchdog};
 use crate::engine::{EngineProcess, InfoSlot, ParsedUciLine};
 
+/// Most queued engine events handled in one frame. `info` lines never reach
+/// the queue (the reader merges them into one slot), so this only matters for
+/// a pathological burst of search-boundary lines; handling a few hundred keeps
+/// a frame bounded without ever dropping a `bestmove`, `readyok` or exit. The
+/// rest stays queued for the next frame.
+const MAX_EVENTS_PER_PUMP: usize = 256;
+
 /// Read-only snapshot of an engine for drawing its card.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EngineView {
@@ -185,7 +192,7 @@ impl EngineHost {
             let commands = self.analysis.on_event(&EngineEvent::Info(stats));
             self.dispatch(commands);
         }
-        loop {
+        for _ in 0..MAX_EVENTS_PER_PUMP {
             let line = match self.events.try_recv() {
                 Ok(line) => line,
                 Err(mpsc::error::TryRecvError::Empty) => break,

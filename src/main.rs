@@ -110,10 +110,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         log::warn!("session log file unavailable; logging to the console only");
     }
 
-    // The runtime only does I/O for the engines and short background jobs, so
-    // two workers are enough. The rest of the cores are left to the engines.
+    // The runtime only does pipe I/O for the engines and short background
+    // jobs, never the search itself (the engines are OS processes with their
+    // own cores). Each engine spawns a reader, writer, monitor, stderr and
+    // supervisor task; with two fast engines a single busy reader could
+    // otherwise occupy one of two workers and delay the other engine's
+    // `stop`/`position`/`go`. Four workers leave headroom for that without
+    // taking meaningful CPU from the searches.
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
+        .worker_threads(4)
         .enable_all()
         .thread_name("siliconboard-io")
         .build()?;

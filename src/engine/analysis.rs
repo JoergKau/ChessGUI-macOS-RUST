@@ -76,6 +76,11 @@ pub struct AnalysisSession {
     /// Score of the last evaluation that ran to its `bestmove`. The outer
     /// `Option` says whether one finished; the inner one whether it had a score.
     pending_evaluation: Option<Option<Score>>,
+    /// FEN of the position the [pending evaluation](Self::pending_evaluation)
+    /// was searched on. An evaluation is only handed out while it still matches
+    /// the current target, so a draw offer can never act on a score that
+    /// belongs to a position the game has already left.
+    pending_evaluation_fen: Option<String>,
     /// `true` while the running search was started for an evaluation.
     search_is_evaluation: bool,
     /// Statistics of the current search.
@@ -123,6 +128,7 @@ impl AnalysisSession {
             search_is_move: false,
             pending_move: None,
             pending_evaluation: None,
+            pending_evaluation_fen: None,
             search_is_evaluation: false,
             stats: EngineStats::default(),
             searched_fen: None,
@@ -218,6 +224,11 @@ impl AnalysisSession {
         }
         if self.target.as_deref() != Some(fen) {
             self.pending_move = None;
+            // A finished evaluation belongs to the old position. Drop it with
+            // the position change so it cannot be mistaken for a score of the
+            // new one.
+            self.pending_evaluation = None;
+            self.pending_evaluation_fen = None;
         }
         self.target = Some(fen.to_string());
         self.goal = goal;
@@ -232,9 +243,21 @@ impl AnalysisSession {
     }
 
     /// The score of the evaluation that finished, once: `Some(None)` when it
-    /// finished without a score, `None` while it runs or when none was asked for.
+    /// finished without a score, `None` while it runs or when none was asked
+    /// for. A score is discarded when the target has changed since it arrived,
+    /// so the caller never acts on an evaluation of another position.
     pub fn take_evaluation(&mut self) -> Option<Option<Score>> {
-        self.pending_evaluation.take()
+        let score = self.pending_evaluation.take()?;
+        let searched = self.pending_evaluation_fen.take();
+        if searched.as_deref() != self.target.as_deref() {
+            log::debug!(
+                "discarding an evaluation of {:?}: the target is now {:?}",
+                searched,
+                self.target
+            );
+            return None;
+        }
+        Some(score)
     }
 
     /// Feed one engine event; returns the commands it triggers.
@@ -288,6 +311,7 @@ impl AnalysisSession {
                     }
                     if self.search_is_evaluation {
                         self.pending_evaluation = Some(self.stats.score);
+                        self.pending_evaluation_fen = self.searched_fen.clone();
                     }
                     self.take_pending()
                 }
@@ -308,6 +332,7 @@ impl AnalysisSession {
         self.pending.clear();
         self.pending_move = None;
         self.pending_evaluation = None;
+        self.pending_evaluation_fen = None;
     }
 
     /// Current status for the UI badge.
@@ -792,6 +817,29 @@ mod tests {
         assert_eq!(s.take_evaluation(), Some(Some(Score::Cp(20))));
         assert_eq!(s.take_engine_move(), None, "an evaluation plays no move");
         assert_eq!(s.take_evaluation(), None, "an evaluation is taken once");
+    }
+
+    #[test]
+    fn an_evaluation_of_a_position_the_game_left_is_not_taken() {
+        let mut s = ready_session();
+        s.set_enabled(true);
+        s.set_target(START, SearchGoal::Evaluate(GoControl::MoveTime(500)));
+        s.on_event(&depth_info(6, 20));
+        s.on_event(&bestmove("e2e4"));
+        // The game moved on before the draw offer looked at the score.
+        s.set_target(AFTER_E4, SearchGoal::Analyse);
+        assert_eq!(
+            s.take_evaluation(),
+            None,
+            "the score belongs to the position that was searched, not the new one"
+        );
+
+        // A score of the current target is still delivered.
+        s.on_event(&bestmove("e2e4"));
+        s.set_target(AFTER_E4, SearchGoal::Evaluate(GoControl::MoveTime(500)));
+        s.on_event(&depth_info(7, -15));
+        s.on_event(&bestmove("e7e5"));
+        assert_eq!(s.take_evaluation(), Some(Some(Score::Cp(-15))));
     }
 
     #[test]

@@ -283,6 +283,21 @@ fn engine_wake_for(events: &EventSender) -> EngineWake {
     })
 }
 
+/// Book-picker seed for one tournament game. The same match and game number
+/// always give the same seed, while different games (and different matches)
+/// get unrelated sequences, so repeated openings do not replay one book line.
+fn book_seed(tournament_generation: u64, game_number: u32) -> u64 {
+    tournament_generation.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ u64::from(game_number)
+}
+
+/// Whether the 500 ms frame tick is needed for this engine state. Only a
+/// starting engine has a deadline that runs on the frame clock (the handshake
+/// timeout in `report_engine_start_up`); a searching engine is watched by its
+/// own monitor task and wakes the window on output or a stall.
+fn engine_tick_needed(status: AnalysisStatus) -> bool {
+    status == AnalysisStatus::Starting
+}
+
 /// Whether an engine line should wake the window now. Handshake answers,
 /// `bestmove`, watchdog answers and process exit always do; `info` lines wait
 /// for the next [`ENGINE_WAKE_INTERVAL`] slot (at most 30 frames per second).
@@ -309,8 +324,11 @@ enum AppEvent {
     OpeningNamesLoaded {
         outcome: Result<OpeningNames, OpeningError>,
     },
-    /// A PGN file was read and parsed.
+    /// A PGN file was read and parsed. `request` is the sequence number of the
+    /// Open request; a result from an older request is stale and is ignored, so
+    /// two quick opens cannot show the first file's game after the second one.
     PgnOpened {
+        request: u64,
         outcome: Option<Result<(String, PgnCollection), OpenPgnError>>,
     },
     /// File was written.
@@ -574,6 +592,9 @@ pub struct SiliconBoardApp {
     tournament: Option<TournamentSession>,
     /// Counter used to reject late results from an older tournament.
     tournament_generation: u64,
+    /// Sequence number of the latest Open PGN request. A result whose number
+    /// is older than this belongs to a file the user has already replaced.
+    pgn_request: u64,
     /// A multi-game PGN whose games are listed on the right panel.
     pgn_collection: Option<PgnCollection>,
     /// Selected game in `pgn_collection` (zero-based).
@@ -715,6 +736,7 @@ impl SiliconBoardApp {
             tournament_dialog: None,
             tournament: None,
             tournament_generation: 0,
+            pgn_request: 0,
             pgn_collection: None,
             pgn_browser_selected: 0,
             pgn_termination: None,
@@ -759,15 +781,16 @@ impl SiliconBoardApp {
             ctx.request_repaint();
         }
         // Engine output wakes the window from the reader task, so a frame runs
-        // as soon as there is new analysis. The tick below only covers a
-        // starting handshake and the watchdog of a running search. An idle
-        // loaded engine costs no frames.
-        let engine_tick_needed = self.engines.iter().flatten().any(|host| {
-            matches!(
-                host.status(),
-                AnalysisStatus::Starting | AnalysisStatus::Thinking
-            )
-        });
+        // as soon as there is new analysis. The watchdog of a running search
+        // lives in the engine's own monitor task, which wakes the window when
+        // it declares a stall. Only the handshake timeout still needs a timer,
+        // so a searching engine no longer costs two extra frames per second
+        // (BUG-7-20). An idle loaded engine costs no frames either.
+        let engine_tick_needed = self
+            .engines
+            .iter()
+            .flatten()
+            .any(|host| engine_tick_needed(host.status()));
         if engine_tick_needed {
             ctx.request_repaint_after(ENGINE_TICK);
         }
@@ -1096,38 +1119,49 @@ impl SiliconBoardApp {
                     }
                     Err(err) => log::warn!("opening names not loaded: {}", err),
                 },
-                AppEvent::PgnOpened { outcome } => match outcome {
-                    None => self.set_status(StatusLevel::Info, "Open cancelled.".to_string()),
-                    Some(Ok((name, mut collection))) => {
-                        collection.name = name.clone();
-                        if collection.is_multi_game() {
-                            let total = collection.games.len();
-                            self.pgn_collection = Some(collection);
-                            self.pgn_browser_selected = 0;
-                            self.pgn_browser_list_open = true;
-                            self.select_pgn_game(0);
-                            self.set_status(
+                AppEvent::PgnOpened { request, outcome } => {
+                    if request != self.pgn_request {
+                        log::debug!(
+                            "ignoring a PGN result from request {request}; the latest is {}",
+                            self.pgn_request
+                        );
+                        continue;
+                    }
+                    match outcome {
+                        None => self.set_status(StatusLevel::Info, "Open cancelled.".to_string()),
+                        Some(Ok((name, mut collection))) => {
+                            collection.name = name.clone();
+                            if collection.is_multi_game() {
+                                let total = collection.games.len();
+                                self.pgn_collection = Some(collection);
+                                self.pgn_browser_selected = 0;
+                                self.pgn_browser_list_open = true;
+                                self.select_pgn_game(0);
+                                self.set_status(
                                 StatusLevel::Info,
                                 format!(
                                     "Opened {} — {} games. Pick a game in the games list on the right.",
                                     name, total
                                 ),
                             );
-                        } else {
-                            self.pgn_collection = None;
-                            self.pgn_browser_selected = 0;
-                            self.pgn_browser_list_open = false;
-                            match collection.load_game(0) {
-                                Ok(import) => self.load_pgn_game(&name, import, None),
-                                Err(err) => self.set_status(StatusLevel::Error, err.to_string()),
+                            } else {
+                                self.pgn_collection = None;
+                                self.pgn_browser_selected = 0;
+                                self.pgn_browser_list_open = false;
+                                match collection.load_game(0) {
+                                    Ok(import) => self.load_pgn_game(&name, import, None),
+                                    Err(err) => {
+                                        self.set_status(StatusLevel::Error, err.to_string())
+                                    }
+                                }
                             }
                         }
+                        Some(Err(err)) => {
+                            log::error!("PGN open failed: {}", err);
+                            self.set_status(StatusLevel::Error, err.to_string());
+                        }
                     }
-                    Some(Err(err)) => {
-                        log::error!("PGN open failed: {}", err);
-                        self.set_status(StatusLevel::Error, err.to_string());
-                    }
-                },
+                }
                 AppEvent::BoardThemeLoaded { theme, outcome } => match outcome {
                     Ok(image) => {
                         let handle =
@@ -2417,6 +2451,14 @@ impl SiliconBoardApp {
         };
 
         let (game, white_slot, white_name, black_name, number, total, control, options) = prepared;
+        // A fresh per-game seed: games that start from the same position then
+        // get independent book lines instead of replaying one fixed sequence,
+        // which is what makes a match statistically meaningful (audit §2.7).
+        let generation = self
+            .tournament
+            .as_ref()
+            .map_or(0, |session| session.generation);
+        self.book_picker = BookPicker::with_seed(book_seed(generation, number));
         self.game = game;
         self.ending = None;
         self.pgn_termination = None;
@@ -3095,11 +3137,20 @@ impl SiliconBoardApp {
             log::info!("no start-up PGN: PGN/WorldChamp1972.pgn is not next to the assets");
             return;
         };
+        let request = self.next_pgn_request();
         let tx = self.events_tx.clone();
         self.spawn(async move {
             let outcome = Some(read_pgn(&path).await);
-            tx.send(AppEvent::PgnOpened { outcome });
+            tx.send(AppEvent::PgnOpened { request, outcome });
         });
+    }
+
+    /// Take the next Open PGN sequence number. A result that arrives with an
+    /// older number is from a file the user has already replaced; the reader
+    /// ignores it (BUG-AUDIT-05).
+    fn next_pgn_request(&mut self) -> u64 {
+        self.pgn_request = self.pgn_request.wrapping_add(1);
+        self.pgn_request
     }
 
     /// Load one parsed PGN game onto the board. `game_number` is set when it
@@ -3179,6 +3230,7 @@ impl SiliconBoardApp {
     /// Show the file picker for a PGN file, then read and parse it.
     fn open_pgn(&mut self) {
         self.set_status(StatusLevel::Info, "Choose a PGN file…".to_string());
+        let request = self.next_pgn_request();
         let tx = self.events_tx.clone();
         self.spawn(async move {
             let picked = rfd::AsyncFileDialog::new()
@@ -3192,7 +3244,7 @@ impl SiliconBoardApp {
                     Some(read_pgn(&path).await)
                 }
             };
-            tx.send(AppEvent::PgnOpened { outcome });
+            tx.send(AppEvent::PgnOpened { request, outcome });
         });
     }
 
@@ -4769,6 +4821,25 @@ mod tests {
     }
 
     #[test]
+    fn only_a_starting_engine_needs_the_frame_tick() {
+        assert!(engine_tick_needed(AnalysisStatus::Starting));
+        assert!(
+            !engine_tick_needed(AnalysisStatus::Thinking),
+            "the monitor task watches a search and wakes the window itself"
+        );
+        assert!(!engine_tick_needed(AnalysisStatus::Ready));
+        assert!(!engine_tick_needed(AnalysisStatus::Offline));
+    }
+
+    #[test]
+    fn a_tournament_game_gets_its_own_book_seed() {
+        let first = book_seed(7, 1);
+        assert_eq!(first, book_seed(7, 1), "one game always gets the same seed");
+        assert_ne!(first, book_seed(7, 2), "the next game gets a new sequence");
+        assert_ne!(first, book_seed(8, 1), "a new match starts afresh");
+    }
+
+    #[test]
     fn frame_timer_reports_one_second_of_frames() {
         let start = Instant::now();
         let cost = Duration::from_millis(2);
@@ -5609,6 +5680,7 @@ mod game_flow_tests {
         let text = "[Event \"One\"]\n[White \"A\"]\n[Black \"B\"]\n[Result \"1-0\"]\n\n1. e4 e5 1-0\n\n[Event \"Two\"]\n[White \"C\"]\n[Black \"D\"]\n[Result \"0-1\"]\n\n1. d4 d5 0-1\n";
         let collection = pgn::parse_pgn_collection(text).unwrap();
         app.events_tx.send(AppEvent::PgnOpened {
+            request: 0,
             outcome: Some(Ok(("multi.pgn".to_string(), collection))),
         });
         app.logic_frame(&ctx);
@@ -5657,6 +5729,32 @@ mod game_flow_tests {
     }
 
     #[test]
+    fn an_older_pgn_result_does_not_replace_a_newer_one() {
+        let ctx = egui::Context::default();
+        let mut app = SiliconBoardApp::unloaded(
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+            ctx.clone(),
+        );
+        // The user has already opened a newer file; the first file's slow read
+        // arrives last and must be ignored.
+        app.pgn_request = 2;
+        let text = "[Event \"Old\"]\n\n1. e4 e5 1-0\n\n[Event \"Older\"]\n\n1. d4 d5 0-1\n";
+        let collection = pgn::parse_pgn_collection(text).unwrap();
+        app.events_tx.send(AppEvent::PgnOpened {
+            request: 1,
+            outcome: Some(Ok(("stale.pgn".to_string(), collection))),
+        });
+        app.logic_frame(&ctx);
+        assert!(
+            app.pgn_collection.is_none(),
+            "a result from an older Open request is discarded"
+        );
+    }
+
+    #[test]
     fn opening_a_pgn_with_a_result_shows_the_result() {
         let ctx = egui::Context::default();
         let mut app = SiliconBoardApp::unloaded(
@@ -5671,6 +5769,7 @@ mod game_flow_tests {
         )
         .unwrap();
         app.events_tx.send(AppEvent::PgnOpened {
+            request: 0,
             outcome: Some(Ok(("result.pgn".to_string(), collection))),
         });
         app.logic_frame(&ctx);

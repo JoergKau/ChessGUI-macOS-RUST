@@ -13,7 +13,7 @@
 
 use std::fmt::Write;
 
-use shakmaty::{fen::Fen, san::SanPlus, Color, EnPassantMode, Position};
+use shakmaty::{fen::Fen, san::SanPlus, zobrist::Zobrist64, Color, EnPassantMode, Position};
 
 use crate::chess::game_state::{Ending, FenError, GameState};
 use crate::chess::PieceColor;
@@ -21,8 +21,11 @@ use crate::chess::PieceColor;
 /// Movetext is wrapped before this many columns.
 const LINE_WIDTH: usize = 80;
 
-/// FEN of the standard starting position.
-const STANDARD_START_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+/// PolyGlot Zobrist key of the standard starting position
+/// (`0x463b96181691fc9c`). Comparing the key, not a FEN string, keeps the
+/// "is this the normal start?" check stable if shakmaty ever canonicalises a
+/// FEN differently (audit §2.4).
+const STANDARD_START_ZOBRIST: u64 = 0x463b_9618_1691_fc9c;
 
 /// The seven mandatory PGN tag pairs, plus any extra tags a caller wants
 /// (for example the tournament's `TimeControl` and `Termination` tags).
@@ -103,8 +106,8 @@ pub fn to_pgn_with_headers(game: &GameState, result: &str, headers: &PgnHeaders)
     for (name, value) in &headers.extra_tags {
         push_tag(&mut out, name, value);
     }
-    let start_fen = Fen::from_position(&start, EnPassantMode::Legal).to_string();
-    if start_fen != STANDARD_START_FEN {
+    if start.zobrist_hash::<Zobrist64>(EnPassantMode::Legal).0 != STANDARD_START_ZOBRIST {
+        let start_fen = Fen::from_position(&start, EnPassantMode::Legal).to_string();
         push_tag(&mut out, "SetUp", "1");
         push_tag(&mut out, "FEN", &start_fen);
     }
@@ -695,6 +698,28 @@ mod tests {
         assert!(text.contains("[FEN \""));
         assert!(text.contains("12... c5"), "movetext: {}", text);
         let parsed = parse_pgn(&text).unwrap();
+        assert_eq!(parsed.fen(), game.fen());
+    }
+
+    #[test]
+    fn a_black_first_game_round_trips_through_pgn() {
+        // FEN start with Black to move at move 12: the movetext starts at
+        // `12...`, the White replies carry `13.`, and the result must survive
+        // the export/import round trip.
+        let fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 12";
+        let mut game = GameState::from_fen(fen).unwrap();
+        play(&mut game, "c7", "c5");
+        play(&mut game, "g1", "f3");
+        play(&mut game, "d7", "d6");
+        play(&mut game, "d2", "d4");
+        let text = to_pgn(&game, None);
+        assert!(
+            text.contains("12... c5 13. Nf3 d6 14. d4 *"),
+            "movetext: {}",
+            text
+        );
+        let parsed = parse_pgn(&text).unwrap();
+        assert_eq!(sans(&parsed), vec!["c5", "Nf3", "d6", "d4"]);
         assert_eq!(parsed.fen(), game.fen());
     }
 

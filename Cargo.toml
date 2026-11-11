@@ -1,6 +1,6 @@
 [package]
 name = "siliconboard"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 description = "SiliconBoard — A modern, high-performance UCI Chess GUI for Apple Silicon written in Rust"
 authors = ["SiliconBoard Contributors"]
@@ -95,4 +95,8 @@ codegen-units = 1
 # Unwinding (the default) runs `Drop` on a panic, so the engine handles are
 # dropped and their processes are killed. With "abort" nothing runs, and the
 # engines are left behind (see BUG-7-09).
-strip = "symbols"
+#
+# Symbols are intentionally kept in the Cargo release profile: an internal or
+# development build then produces useful crash reports. `package-macos.sh`
+# strips the copy that goes into the distributable .app, so only the shipped
+# bundle trades diagnostics for size (audit §2.3).

@@ -255,6 +255,10 @@ pub struct EngineStats {
     pub refutation: Option<Vec<String>>,
     pub currline: Option<Vec<u32>>,
     pub score: Option<Score>,
+    /// Depth the [score](Self::score) belongs to. `depth` may already be
+    /// higher when the engine sends a depth-only line after a scored one; the
+    /// card greys the score out while `score_depth < depth`.
+    pub score_depth: Option<u32>,
     pub pv: Vec<String>,
 }
 
@@ -272,7 +276,16 @@ impl EngineStats {
         self.tbhits = update.tbhits.or(self.tbhits);
         self.multipv = update.multipv.or(self.multipv);
         self.currmovenumber = update.currmovenumber.or(self.currmovenumber);
+        let scored = update.score.is_some();
         self.score = update.score.or(self.score);
+        if scored {
+            // The score belongs to the depth of the line that carried it. When
+            // that line omits the depth, the search's current depth is the
+            // closest thing to the truth; a later depth-only line leaves this
+            // value behind, which is exactly what the card uses to grey the
+            // score out.
+            self.score_depth = update.depth.or(self.depth);
+        }
         if let Some(currmove) = &update.currmove {
             self.currmove = Some(currmove.clone());
         }
@@ -413,6 +426,33 @@ mod tests {
         );
         assert_eq!(EngineCommand::Stop.to_wire_string(), "stop");
         assert_eq!(EngineCommand::Quit.to_wire_string(), "quit");
+    }
+
+    #[test]
+    fn a_scored_info_line_records_the_depth_of_its_score() {
+        let mut stats = EngineStats::default();
+        stats.merge(&EngineStats {
+            depth: Some(20),
+            score: Some(Score::Cp(45)),
+            ..EngineStats::default()
+        });
+        assert_eq!(stats.score_depth, Some(20));
+        // A later depth-only line advances the card but leaves the score's
+        // depth behind, so the UI can grey the old score out.
+        stats.merge(&EngineStats {
+            depth: Some(21),
+            ..EngineStats::default()
+        });
+        assert_eq!(stats.depth, Some(21));
+        assert_eq!(stats.score, Some(Score::Cp(45)));
+        assert_eq!(stats.score_depth, Some(20));
+        // A new score at the deeper level moves both together.
+        stats.merge(&EngineStats {
+            depth: Some(21),
+            score: Some(Score::Cp(50)),
+            ..EngineStats::default()
+        });
+        assert_eq!(stats.score_depth, Some(21));
     }
 
     #[test]

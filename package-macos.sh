@@ -47,6 +47,9 @@ print "▶ Assembling $APP (v$version)"
 rm -rf "$REPO_ROOT/$APP"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp target/release/siliconboard "$CONTENTS/MacOS/SiliconBoard"
+# Cargo keeps the symbol table in the release profile so dev/internal builds
+# give useful crash reports; only the bundle that ships is stripped.
+strip -x "$CONTENTS/MacOS/SiliconBoard"
 cp assets/icon/SiliconBoard.icns "$CONTENTS/Resources/"
 cp -R public "$CONTENTS/Resources/public"
 # The start-up PGN rides along, so the installed app also opens

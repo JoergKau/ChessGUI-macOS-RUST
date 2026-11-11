@@ -1,5 +1,27 @@
 # SiliconBoard — Release Notes
 
+## v1.2.0
+
+**Final-audit hardening:** the 2026-11-11 audit findings are applied. A draw
+offer can no longer act on an evaluation of a position the game has left, and
+an engine card greys its score out while the search has moved to a deeper
+level than the score came from (hover the score badge for the reason).
+
+**Fairer tournaments:** each game reseeds the opening-book picker, so games from
+the same EPD position get independent book lines instead of replaying one
+sequence.
+
+**Smoother PGN use:** a slow PGN read can no longer replace a file opened after
+it, and a Black-first game from a FEN round-trips through export and import.
+
+**Two-engine performance:** the Tokio runtime now uses four workers, the
+engine event queue carries only search-boundary lines with a 256-event frame
+cap, the 500 ms frame tick runs only while a handshake is pending, and analysis
+arrows no longer allocate on every frame. The broadcast buffer is smaller.
+
+**Diagnostics:** development and internal release builds keep their symbol
+table for useful crash reports; only the packaged `.app` is stripped.
+
 ## v1.1.0
 
 **Setup Board:** _Game → Setup board…_ opens a position editor in the right

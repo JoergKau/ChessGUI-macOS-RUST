@@ -202,8 +202,9 @@ fn engine_card(
                         .map_or_else(|| "--".to_string(), |d| d.to_string());
                     let nodes = format_count(view.stats.nodes.unwrap_or(0));
                     let eval = white_score.map_or_else(|| "--".to_string(), format_eval_one_digit);
+                    let stale = score_is_stale(view.stats.depth, view.stats.score_depth);
                     ui.add_space((ui.available_width() - metrics_width()).max(METRIC_GAP));
-                    metrics_block(ui, &eval, &depth, &nodes);
+                    metrics_block(ui, &eval, &depth, &nodes, stale);
                 }
             });
 
@@ -230,13 +231,14 @@ fn engine_card(
                 .score
                 .map(|s| white_point_of_view(s, search_white_to_move));
             let badge = white_score.map_or_else(|| "--".to_string(), format_score_white);
+            let stale = score_is_stale(view.stats.depth, view.stats.score_depth);
             let tokens = number_pv(
                 search_fullmove,
                 search_white_to_move,
                 card.pv_san.as_slice(),
             );
             ui.horizontal_top(|ui| {
-                score_badge(ui, &badge);
+                score_badge(ui, &badge, stale);
                 ui.add_space(4.0);
                 pv_flow(ui, &tokens, figurines);
             });
@@ -363,15 +365,27 @@ fn metrics_width() -> f32 {
     3.0 * METRIC_WIDTH + 2.0 * METRIC_GAP
 }
 
+/// True when the displayed depth has moved past the depth the score came from.
+/// Engines may send `info depth 21` with no score after a scored depth 20 line;
+/// the score is then older than the rest of the card and is shown greyed out.
+fn score_is_stale(depth: Option<u32>, score_depth: Option<u32>) -> bool {
+    matches!((depth, score_depth), (Some(depth), Some(scored)) if scored < depth)
+}
+
 /// EVAL, DEPTH and NODES side by side, each label centred over its value.
 /// The block is painted at fixed positions, so the three columns always share
-/// one top line.
-fn metrics_block(ui: &mut Ui, eval: &str, depth: &str, nodes: &str) {
+/// one top line. A stale score (see [`score_is_stale`]) is drawn muted.
+fn metrics_block(ui: &mut Ui, eval: &str, depth: &str, nodes: &str, stale: bool) {
     let (rect, _) =
         ui.allocate_exact_size(Vec2::new(metrics_width(), METRIC_HEIGHT), Sense::hover());
+    let eval_color = if stale {
+        theme::MUTED
+    } else {
+        theme::NEON_GREEN
+    };
     let painter = ui.painter();
     let columns = [
-        ("EVAL", eval, theme::NEON_GREEN),
+        ("EVAL", eval, eval_color),
         ("DEPTH", depth, theme::NEON_CYAN),
         ("NODES", nodes, theme::NEON_CYAN),
     ];
@@ -394,19 +408,22 @@ fn metrics_block(ui: &mut Ui, eval: &str, depth: &str, nodes: &str) {
     }
 }
 
-/// The evaluation from White's point of view, on a white badge.
-fn score_badge(ui: &mut Ui, text: &str) {
+/// The evaluation from White's point of view, on a white badge. A stale score
+/// is written muted so it does not read as the score of the displayed depth.
+fn score_badge(ui: &mut Ui, text: &str, stale: bool) {
+    let color = if stale { theme::MUTED } else { Color32::BLACK };
     egui::Frame::new()
         .fill(Color32::WHITE)
         .corner_radius(4.0)
         .inner_margin(6.0)
         .show(ui, |ui| {
-            ui.label(
-                RichText::new(text)
-                    .monospace()
-                    .strong()
-                    .color(Color32::BLACK),
-            );
+            let label = ui.label(RichText::new(text).monospace().strong().color(color));
+            if stale {
+                label.on_hover_text(
+                    "The search has reached a deeper level than this score; it \
+                     will update with the next scored line.",
+                );
+            }
         });
 }
 
@@ -637,6 +654,17 @@ mod tests {
         assert_eq!(format_score_white(Score::Mate(3)), "#3");
         assert_eq!(format_score_white(Score::Mate(-2)), "-#2");
         assert_eq!(format_score_white(Score::Mate(0)), "#0");
+    }
+
+    #[test]
+    fn a_score_from_a_shallower_depth_is_marked_stale() {
+        assert!(score_is_stale(Some(21), Some(20)));
+        assert!(!score_is_stale(Some(20), Some(20)));
+        assert!(
+            !score_is_stale(Some(21), None),
+            "a score without a depth cannot be compared"
+        );
+        assert!(!score_is_stale(None, Some(20)));
     }
 
     #[test]

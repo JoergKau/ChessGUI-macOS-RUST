@@ -589,6 +589,10 @@ impl TournamentDialog {
                     DragValue::new(&mut self.config.draw_move_count)
                         .range(0..=1_000)
                         .suffix(" moves"),
+                )
+                .on_hover_text(
+                    "Half-moves (plies): each side's move counts as one. \
+                     20 plies are 10 full moves.",
                 );
                 ui.label("within");
                 ui.add(

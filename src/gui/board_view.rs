@@ -718,8 +718,12 @@ fn paint_eval_arrows(
 ) {
     let shortened = shortened_arrows(white_on_bottom, square, board_rect, arrows);
     for (arrow, shortened) in arrows.iter().zip(shortened) {
-        for shape in arrow_shapes(white_on_bottom, square, board_rect, *arrow, shortened) {
-            ui.painter().add(shape);
+        // The three shapes are a fixed-size array on the stack: no per-arrow
+        // `Vec` allocation on the board's hot path (audit §3.5).
+        if let Some(shapes) = arrow_shapes(white_on_bottom, square, board_rect, *arrow, shortened) {
+            for shape in shapes {
+                ui.painter().add(shape);
+            }
         }
     }
 }
@@ -764,37 +768,34 @@ fn shortened_arrows(
     shortened
 }
 
-/// The three shapes of one arrow — round cap, shaft and head — so the painted
-/// geometry can be checked without a renderer. Empty for an unknown square or a
-/// degenerate move.
+/// The three shapes of one arrow — round cap, shaft and head — as a fixed-size
+/// array, so the paint path allocates nothing. `None` for an unknown square or
+/// a degenerate move. Kept separate from the painter so the geometry can be
+/// checked without a renderer.
 fn arrow_shapes(
     white_on_bottom: bool,
     square: f32,
     board_rect: Rect,
     arrow: EvalArrow,
     shortened: bool,
-) -> Vec<Shape> {
-    let (Some(from), Some(to)) = (
-        square_to_coords(white_on_bottom, arrow.from),
-        square_to_coords(white_on_bottom, arrow.to),
-    ) else {
-        return Vec::new();
-    };
+) -> Option<[Shape; 3]> {
+    let (from, to) = (
+        square_to_coords(white_on_bottom, arrow.from)?,
+        square_to_coords(white_on_bottom, arrow.to)?,
+    );
     let from = square_rect(board_rect, square, from.0, from.1).center();
     let to = square_rect(board_rect, square, to.0, to.1).center();
-    let Some(geometry) = arrow_geometry(from, to, square, shortened) else {
-        return Vec::new();
-    };
+    let geometry = arrow_geometry(from, to, square, shortened)?;
     // Round cap at the origin, the shaft, then the head. The shaft stops at the
     // head's base, so the translucent colour is not blended twice.
-    vec![
+    Some([
         Shape::circle_filled(geometry.start, geometry.width / 2.0, arrow.color),
         Shape::line_segment(
             [geometry.shaft_start, geometry.shaft_end],
             Stroke::new(geometry.width, arrow.color),
         ),
         Shape::convex_polygon(geometry.head.to_vec(), arrow.color, Stroke::NONE),
-    ]
+    ])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1297,7 +1298,8 @@ mod tests {
             to: sq("e4"),
             color,
         };
-        let shapes = arrow_shapes(true, square, board_rect, arrow, false);
+        let shapes = arrow_shapes(true, square, board_rect, arrow, false)
+            .expect("a legal arrow has three shapes");
         assert_eq!(shapes.len(), 3, "cap, shaft and head");
 
         // The cap sits on the e2 centre: 50 + 4.5 * 100, and row 6 → y 650.
@@ -1330,7 +1332,7 @@ mod tests {
         }
 
         // Flipping the board mirrors the arrow: it points down instead.
-        let flipped = arrow_shapes(false, square, board_rect, arrow, false);
+        let flipped = arrow_shapes(false, square, board_rect, arrow, false).expect("a legal arrow");
         match &flipped[2] {
             Shape::Path(path) => assert!(path.points[2].y > path.points[0].y),
             other => panic!("expected the head, got {other:?}"),

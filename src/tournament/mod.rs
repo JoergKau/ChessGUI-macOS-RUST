@@ -839,6 +839,13 @@ pub fn game_headers(
 }
 
 /// Today's date as PGN writes it, `YYYY.MM.DD`, in UTC.
+///
+/// This is the one deliberate `SystemTime` in the app: a PGN `Date` tag is a
+/// calendar date, not a duration, so monotonic `Instant` cannot express it.
+/// (All timing — clocks, watchdog deadlines, frame gaps — uses `Instant`, per
+/// the project rule in §10.4.) A clock step during a match can shift the tag
+/// of a game written after it, which is acceptable for a label; no game logic
+/// reads this value.
 pub fn today_utc() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
