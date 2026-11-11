@@ -570,6 +570,9 @@ pub struct SiliconBoardApp {
     engine_status: [Option<AnalysisStatus>; 2],
     /// When each slot's engine was spawned, for the handshake timeout.
     engine_started: [Option<Instant>; 2],
+    /// Why the last spawn of a slot failed, so a tournament can name the
+    /// reason instead of only saying that an engine could not be started.
+    engine_spawn_error: [Option<String>; 2],
     /// The FEN text in the top bar. Follows the position unless the user edits it.
     fen_input: String,
     /// Board images found in `public/images/board/`, for the View menu.
@@ -724,6 +727,7 @@ impl SiliconBoardApp {
             status_level: StatusLevel::Info,
             engine_status: [None, None],
             engine_started: [None, None],
+            engine_spawn_error: [None, None],
             fen_input: GameState::new().fen(),
             board_themes: Vec::new(),
             piece_sets: Vec::new(),
@@ -1006,6 +1010,7 @@ impl SiliconBoardApp {
                             "Engine selection cancelled.".to_string(),
                         ),
                         Some(Ok(process)) => {
+                            self.engine_spawn_error[slot] = None;
                             let binary = process.binary().display().to_string();
                             let path = process.binary().to_path_buf();
                             if let Some(mut old) = self.engines[slot].take() {
@@ -1052,6 +1057,7 @@ impl SiliconBoardApp {
                         }
                         Some(Err(err)) => {
                             self.restarting[slot] = None;
+                            self.engine_spawn_error[slot] = Some(err.to_string());
                             log::error!("engine spawn failed: {}", err);
                             self.set_status(
                                 StatusLevel::Error,
@@ -1475,7 +1481,22 @@ impl SiliconBoardApp {
             MenuAction::ChooseEngine { slot, choice } => self.choose_engine(slot, choice),
             MenuAction::ToggleEngine(slot) => self.toggle_engine(slot),
             MenuAction::StartAnalysis => self.set_analysis(true),
-            MenuAction::StopAnalysis => self.set_analysis(false),
+            MenuAction::StopAnalysis => {
+                // The red Stop button is the obvious way out of a running
+                // match, especially once the user has closed the tournament
+                // window. Stopping only the searches would leave the match
+                // owning the board and unable to continue, so it stops the
+                // whole tournament (completed games stay in the PGN).
+                if self
+                    .tournament
+                    .as_ref()
+                    .is_some_and(TournamentSession::active)
+                {
+                    self.stop_tournament();
+                } else {
+                    self.set_analysis(false);
+                }
+            }
             MenuAction::LoadFen => match GameState::from_fen(self.fen_input.trim()) {
                 Ok(game) => {
                     self.game = game;
@@ -2340,6 +2361,50 @@ impl SiliconBoardApp {
         }
     }
 
+    /// Why a tournament engine is missing or offline: the slot, the engine and
+    /// its own diagnosis (exit status and the message that names the problem),
+    /// or the spawn error. The generic sentence alone hid cases such as
+    /// Pedantic exiting on a missing locale.
+    fn tournament_engine_failure(&self) -> String {
+        let mut problems = Vec::new();
+        for slot in 0..2 {
+            let problem = match self.engines[slot].as_ref() {
+                Some(host) if host.status() == AnalysisStatus::Offline => {
+                    let view = host.view();
+                    let name = view.name.filter(|name| !name.is_empty());
+                    Some(format!(
+                        "engine {} ({}) did not start: {}",
+                        slot_letter(slot),
+                        name.as_deref().unwrap_or(&view.binary_name),
+                        host.failure_detail()
+                    ))
+                }
+                Some(_) => None,
+                None => Some(self.engine_spawn_error[slot].as_ref().map_or_else(
+                    || format!("engine {} is not loaded", slot_letter(slot)),
+                    |error| {
+                        format!(
+                            "engine {} could not be started: {}",
+                            slot_letter(slot),
+                            error
+                        )
+                    },
+                )),
+            };
+            if let Some(problem) = problem {
+                problems.push(problem);
+            }
+        }
+        if problems.is_empty() {
+            "A tournament engine could not be started.".to_string()
+        } else {
+            format!(
+                "A tournament engine could not be started: {}.",
+                problems.join("; ")
+            )
+        }
+    }
+
     /// The EPD index finished on a blocking thread.
     fn handle_tournament_book_loaded(
         &mut self,
@@ -2543,7 +2608,8 @@ impl SiliconBoardApp {
                 if ready {
                     self.start_tournament_game();
                 } else if failed && !loading {
-                    self.fail_tournament("A tournament engine could not be started.".to_string());
+                    let message = self.tournament_engine_failure();
+                    self.fail_tournament(message);
                 }
             }
             TournamentPhase::BetweenGames => {
@@ -2769,6 +2835,9 @@ impl SiliconBoardApp {
             .as_ref()
             .is_some_and(|session| session.phase == TournamentPhase::Finished)
         {
+            // The summary pop-up appears even when the user closed the live
+            // tournament window earlier: closing it only hides the progress
+            // view, never the result of the match.
             self.tournament_window_open = false;
             self.tournament_finished_popup = true;
             self.set_status(StatusLevel::Info, summary);
@@ -4660,7 +4729,6 @@ fn action_conflicts_with_tournament(action: MenuAction) -> bool {
             | MenuAction::LoadEngine(_)
             | MenuAction::ToggleEngine(_)
             | MenuAction::StartAnalysis
-            | MenuAction::StopAnalysis
             | MenuAction::ToggleBookInGames
             | MenuAction::Resign
             | MenuAction::OfferDraw
@@ -4967,6 +5035,34 @@ mod game_flow_tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         false
+    }
+
+    /// A tournament session in a chosen phase, with a PGN file in `dir`. Used
+    /// by the window and stop tests, which need no engines.
+    fn tournament_session_for_test(
+        dir: &tempfile::TempDir,
+        phase: TournamentPhase,
+        config: TournamentConfig,
+    ) -> TournamentSession {
+        let pgn_file = std::fs::File::create(dir.path().join("match.pgn")).unwrap();
+        let total_games = config.games;
+        TournamentSession {
+            adjudicator: Adjudicator::new(&config),
+            config,
+            phase,
+            book: None,
+            schedule: Vec::new(),
+            game_number: 1,
+            white_slot: 0,
+            pgn_file,
+            status: TournamentStatus {
+                running: phase != TournamentPhase::Finished,
+                total_games,
+                ..TournamentStatus::default()
+            },
+            next_game_due: None,
+            generation: 0,
+        }
     }
 
     #[test]
@@ -5847,6 +5943,107 @@ mod game_flow_tests {
             ctx.has_requested_repaint(),
             "the pause before the next game must schedule a frame"
         );
+    }
+
+    /// Owner report: after the user closes the tournament window, the red
+    /// Stop button in the top bar refused with "Stop the tournament before…",
+    /// so the match could not be stopped any more. It must stop the whole
+    /// tournament instead of being blocked.
+    #[test]
+    fn the_top_bar_stop_stops_a_running_tournament_after_its_window_was_closed() {
+        let ctx = egui::Context::default();
+        let mut app = SiliconBoardApp::unloaded(
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap(),
+            ctx.clone(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        app.tournament = Some(tournament_session_for_test(
+            &dir,
+            TournamentPhase::BetweenGames,
+            TournamentConfig::default(),
+        ));
+        app.tournament_window_open = false; // the user closed the live window
+
+        app.perform(MenuAction::StopAnalysis, &ctx);
+
+        let session = app.tournament.as_ref().unwrap();
+        assert_eq!(session.phase, TournamentPhase::Finished);
+        assert!(!session.status.running);
+        assert!(session.status.cancelled, "the match counts as stopped");
+        assert!(
+            app.tournament_finished_popup,
+            "the summary opens when the user stops the match"
+        );
+        assert!(
+            !app.status.contains("Stop the tournament before"),
+            "the red Stop must not be refused: {}",
+            app.status
+        );
+    }
+
+    /// A tournament that cannot start must name the failing slot and the
+    /// reason instead of only the generic sentence.
+    #[test]
+    fn a_tournament_start_failure_names_the_engine_and_reason() {
+        let ctx = egui::Context::default();
+        let mut app = SiliconBoardApp::unloaded(
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap(),
+            ctx,
+        );
+        app.engine_spawn_error[1] = Some("permission denied".to_string());
+        let message = app.tournament_engine_failure();
+        assert!(
+            message.starts_with("A tournament engine could not be started:"),
+            "{message}"
+        );
+        assert!(
+            message.contains("engine B could not be started: permission denied"),
+            "{message}"
+        );
+    }
+
+    /// The user may close the progress window while the match runs. The
+    /// end-of-match summary must still appear.
+    #[test]
+    fn a_closed_tournament_window_still_shows_the_summary_at_the_end() {
+        let ctx = egui::Context::default();
+        let mut app = SiliconBoardApp::unloaded(
+            tokio::runtime::Builder::new_current_thread()
+                .build()
+                .unwrap(),
+            ctx.clone(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let config = TournamentConfig {
+            games: 1,
+            ..TournamentConfig::default()
+        };
+        app.tournament = Some(tournament_session_for_test(
+            &dir,
+            TournamentPhase::Playing,
+            config,
+        ));
+        // The user closed the live window while the match still ran.
+        app.tournament_window_open = false;
+        // Fool's mate: the game is over, so the last scheduled game completes.
+        app.game =
+            GameState::from_fen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
+                .unwrap();
+
+        app.finish_tournament_game();
+
+        let session = app.tournament.as_ref().unwrap();
+        assert_eq!(session.phase, TournamentPhase::Finished);
+        assert_eq!(session.status.completed_games, 1);
+        assert!(
+            app.tournament_finished_popup,
+            "the summary must open even though the live window was closed"
+        );
+        assert!(!app.tournament_window_open);
     }
 
     #[test]

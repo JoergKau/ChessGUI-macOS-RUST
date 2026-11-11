@@ -475,11 +475,12 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
         }
         let stop_searches = egui::Button::new(RichText::new("Stop").color(Color32::WHITE).strong())
             .fill(theme::DANGER_RED);
-        if ui
-            .add(stop_searches)
-            .on_hover_text("Stop all searches (engines stay loaded)")
-            .clicked()
-        {
+        let stop_hover = if state.tournament_running {
+            "Stop the tournament and all searches (engines stay loaded)"
+        } else {
+            "Stop all searches (engines stay loaded)"
+        };
+        if ui.add(stop_searches).on_hover_text(stop_hover).clicked() {
             action = Some(MenuAction::StopAnalysis);
         }
 

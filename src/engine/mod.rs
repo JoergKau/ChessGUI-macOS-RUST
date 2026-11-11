@@ -34,7 +34,7 @@ pub use analysis::{AnalysisStatus, SearchGoal};
 pub use host::{EngineHost, EngineView};
 pub use protocol::{EngineCommand, EngineError, EngineEvent, Score};
 
-use launch::{check_executable, engine_path, Diagnostics};
+use launch::{check_executable, engine_locale, engine_path, Diagnostics};
 use protocol::EngineStats;
 use uci_parser::{parse_line, HandshakeAccumulator, UciParseError};
 use watchdog::{Timing, Watchdog, WatchdogAction};
@@ -186,6 +186,15 @@ impl EngineProcess {
             .process_group(0)
             .env("PATH", engine_path())
             .kill_on_drop(true);
+        // A Finder-launched app has no locale, and some .NET engines then die
+        // during start-up on the invariant culture's OEM code page 1 (see
+        // `launch::ENGINE_FALLBACK_LOCALE`). Give such an engine a real UTF-8
+        // locale; a usable one inherited from a terminal is kept.
+        if let Some(locale) = engine_locale() {
+            cmd.env_remove("LC_ALL")
+                .env_remove("LC_CTYPE")
+                .env("LANG", locale);
+        }
         if let Some(folder) = binary
             .parent()
             .filter(|folder| !folder.as_os_str().is_empty())

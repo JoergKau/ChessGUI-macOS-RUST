@@ -162,6 +162,36 @@ pub fn engine_path() -> OsString {
     std::env::join_paths(folders).unwrap_or_default()
 }
 
+/// Locale an engine runs with when the app has none of its own. A
+/// Finder-launched `.app` inherits no `LANG`, and .NET engines (Pedantic, for
+/// example) then use the invariant culture. Its OEM code page is 1, and
+/// `Encoding.GetEncoding(1)` throws during start-up, so such an engine exits
+/// before the handshake (owner report, round 33).
+pub const ENGINE_FALLBACK_LOCALE: &str = "en_US.UTF-8";
+
+/// The locale an engine needs, or `None` when the inherited one is already
+/// usable. `C`, `POSIX` and `C.UTF-8` count as unusable: .NET still maps them
+/// to the invariant culture and its code page 1.
+pub fn engine_locale_from(lookup: impl Fn(&str) -> Option<OsString>) -> Option<&'static str> {
+    let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .filter_map(|name| lookup(name))
+        .find(|value| !value.is_empty());
+    let usable = locale.is_some_and(|value| {
+        let text = value.to_string_lossy();
+        !matches!(
+            text.trim().to_ascii_lowercase().as_str(),
+            "c" | "posix" | "c.utf-8" | "c.utf8"
+        )
+    });
+    (!usable).then_some(ENGINE_FALLBACK_LOCALE)
+}
+
+/// The locale an engine gets in this process: see [`engine_locale_from`].
+pub fn engine_locale() -> Option<&'static str> {
+    engine_locale_from(|name| std::env::var_os(name))
+}
+
 /// What an engine has said about its own failure: the last stderr lines, and
 /// how the process ended. Shown when an engine does not start.
 #[derive(Debug, Default)]
@@ -186,15 +216,39 @@ impl Diagnostics {
         self.exit = Some(status);
     }
 
-    /// A short report for the status line: the exit status and the last
+    /// The stderr line most likely to explain the failure: the first line that
+    /// names an error, otherwise the last line. Engines often print the reason
+    /// first and a stack trace after it (Pedantic's `Unhandled exception …`
+    /// line is followed by frames), so the last line alone can be useless.
+    fn reason(&self) -> Option<&str> {
+        const MARKERS: [&str; 7] = [
+            "exception",
+            "error",
+            "fatal",
+            "failed",
+            "failure",
+            "cannot",
+            "can't",
+        ];
+        self.stderr
+            .iter()
+            .find(|line| {
+                let lower = line.to_ascii_lowercase();
+                MARKERS.iter().any(|marker| lower.contains(marker))
+            })
+            .or_else(|| self.stderr.back())
+            .map(String::as_str)
+    }
+
+    /// A short report for the status line: the exit status and the most useful
     /// message, or a note that the engine said nothing.
     pub fn summary(&self) -> String {
         let mut parts = Vec::new();
         if let Some(exit) = &self.exit {
             parts.push(exit.clone());
         }
-        match self.stderr.back() {
-            Some(last) => parts.push(format!("last message: {last}")),
+        match self.reason() {
+            Some(reason) => parts.push(format!("message: {reason}")),
             None => parts.push("it printed no message".to_string()),
         }
         parts.join("; ")
@@ -298,12 +352,49 @@ mod tests {
         diagnostics.note_exit("exit status: 127".to_string());
         let summary = diagnostics.summary();
         assert!(
-            summary.starts_with("exit status: 127; last message: line 6"),
+            summary.starts_with("exit status: 127; message: line 6"),
             "{summary}"
         );
         assert!(
             !diagnostics.stderr.iter().any(|line| line == "line 0"),
             "only the newest lines are kept"
         );
+    }
+
+    #[test]
+    fn the_failure_report_prefers_the_line_that_names_the_error() {
+        let mut diagnostics = Diagnostics::default();
+        diagnostics.note_stderr(
+            "Unhandled exception. System.ArgumentException: 1 is not a supported code page.",
+        );
+        diagnostics.note_stderr("   at System.Text.Encoding.GetEncoding(Int32 codepage)");
+        diagnostics.note_stderr("   at Pedantic.Program.Main(String[] args)");
+        diagnostics.note_exit("signal: 6 (SIGABRT)".to_string());
+        assert_eq!(
+            diagnostics.summary(),
+            "signal: 6 (SIGABRT); message: Unhandled exception. System.ArgumentException: 1 is not a supported code page."
+        );
+    }
+
+    #[test]
+    fn a_finder_launch_gets_a_utf8_locale_for_engines() {
+        let none = |_: &str| None;
+        assert_eq!(engine_locale_from(none), Some(ENGINE_FALLBACK_LOCALE));
+        let empty = |_: &str| Some(OsString::new());
+        assert_eq!(engine_locale_from(empty), Some(ENGINE_FALLBACK_LOCALE));
+        let lang = |name: &str| (name == "LANG").then(|| OsString::from("C.UTF-8"));
+        assert_eq!(
+            engine_locale_from(lang),
+            Some(ENGINE_FALLBACK_LOCALE),
+            "C.UTF-8 is still the invariant culture in .NET"
+        );
+        let german = |name: &str| (name == "LANG").then(|| OsString::from("de_DE.UTF-8"));
+        assert_eq!(engine_locale_from(german), None, "a real locale is kept");
+        let lc_all = |name: &str| match name {
+            "LC_ALL" => Some(OsString::from("en_US.UTF-8")),
+            "LANG" => Some(OsString::from("C")),
+            _ => None,
+        };
+        assert_eq!(engine_locale_from(lc_all), None, "LC_ALL wins over LANG");
     }
 }

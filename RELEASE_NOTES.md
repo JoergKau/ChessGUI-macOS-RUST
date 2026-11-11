@@ -1,5 +1,25 @@
 # SiliconBoard — Release Notes
 
+## v1.2.1
+
+**Stopping a tournament:** the red **Stop** button in the top bar now ends a
+running tournament, not just the engine searches. This is the way out when the
+live **Tournament** window has already been closed; completed games stay in the
+PGN. The end-of-match result pop-up appears whether or not that window is still
+open.
+
+**Engines launched from Finder:** a Finder-launched `.app` inherits no
+`LANG`, and .NET engines such as Pedantic then use the invariant culture, whose
+OEM code page is 1; `Encoding.GetEncoding(1)` throws and the engine exits
+before the handshake. Engines now get `LANG=en_US.UTF-8` when the inherited
+locale is missing or only `C`/`POSIX`/`C.UTF-8`; a real terminal locale is
+kept. This fixes “A tournament engine could not be started” with Pedantic.
+
+**Clearer engine failures:** a failed start reports the stderr line that names
+the error (for example Pedantic's `Unhandled exception …` line) instead of only
+the last stack frame, and a tournament names the failing slot, engine and
+reason rather than using the generic sentence.
+
 ## v1.2.0
 
 **Final-audit hardening:** the 2026-11-11 audit findings are applied. A draw
