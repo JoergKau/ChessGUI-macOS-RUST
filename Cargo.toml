@@ -69,18 +69,19 @@ rfd = "0.17"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# ── macOS About panel (src/macos_about.rs): Objective-C bindings ────────────
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSAttributedString", "NSImage", "NSParagraphStyle", "NSText", "objc2-core-foundation"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSDictionary", "NSAttributedString", "NSRange", "NSURL", "NSBundle"] }
-
 # ── Process signals for engine process groups (registry, stall kills) ───────
 libc = "0.2"
 
 # ── Diagnostic logging ───────────────────────────────────────────────────────
 log = "0.4"
 env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+
+
+# ── macOS About panel (src/macos_about.rs): Objective-C bindings ────────────
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSAttributedString", "NSImage", "NSParagraphStyle", "NSText", "objc2-core-foundation"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSDictionary", "NSAttributedString", "NSRange", "NSURL", "NSBundle"] }
 
 [dev-dependencies]
 # Tests run alongside `cargo test`; lightweight helpers.
