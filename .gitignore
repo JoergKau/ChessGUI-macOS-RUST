@@ -37,3 +37,6 @@ doc/
 
 # Tournament output (the Engine match writes its PGN here by default)
 /tournament/
+
+# Python bytecode (tools/)
+__pycache__/

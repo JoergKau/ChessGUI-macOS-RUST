@@ -13,7 +13,8 @@
 #      About-panel copyright (macos_about.rs reads both from the bundle),
 #   4. ad-hoc sign the bundle,
 #   5. build the distributable zip: SiliconBoard-<version>-macos-arm64.zip
-#      holds one folder with the signed app plus LICENSE and README.md,
+#      holds one folder with the signed app plus LICENSE, LICENSE-MIT,
+#      THIRD-PARTY-NOTICES.md and README.md,
 #      and the SHA-256 is printed for the release listing.
 #
 # By default the freshly signed bundle is also installed into /Applications
@@ -52,6 +53,10 @@ cp target/release/siliconboard "$CONTENTS/MacOS/SiliconBoard"
 strip -x "$CONTENTS/MacOS/SiliconBoard"
 cp assets/icon/SiliconBoard.icns "$CONTENTS/Resources/"
 cp -R public "$CONTENTS/Resources/public"
+# The licence texts ride along, so a user who installs only the app bundle
+# still gets them: the GPL text for the application as a whole (it links
+# shakmaty) and the MIT text for the author's own source.
+cp LICENSE LICENSE-MIT THIRD-PARTY-NOTICES.md "$CONTENTS/Resources/"
 # The start-up PGN rides along, so the installed app also opens
 # PGN/WorldChamp1972.pgn at launch and selects game 1.
 STARTUP_PGN="$REPO_ROOT/PGN/WorldChamp1972.pgn"
@@ -79,7 +84,7 @@ cat > "$PLIST" <<EOF
     <key>LSMinimumSystemVersion</key>     <string>11.0</string>
     <key>NSHighResolutionCapable</key>    <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Joerg Kauschke. MIT License.</string>
+    <string>Copyright © 2026 Joerg Kauschke. GPL-3.0-or-later.</string>
 </dict>
 </plist>
 EOF
@@ -88,8 +93,9 @@ plutil -lint "$PLIST"
 print "▶ Ad-hoc signature"
 codesign --force --deep --sign - "$APP"
 
-# The distributable zip: the app plus a copy of README and LICENSE (so a
-# user who only downloads the zip still gets the MIT text). The zip holds
+# The distributable zip: the app plus a copy of README, LICENSE, LICENSE-MIT
+# and the third-party notices (so a user who only downloads the zip still
+# gets them). The zip holds
 # one folder, `SiliconBoard-<version>`, and the app is signed before it is
 # zipped — a zip added to a signed app would break the seal.
 print "▶ Distribution zip"
@@ -97,7 +103,7 @@ stage="$REPO_ROOT/target/dist/SiliconBoard-$version"
 rm -rf "$(dirname "$stage")"
 mkdir -p "$stage"
 cp -R "$REPO_ROOT/$APP" "$stage/"
-cp LICENSE README.md "$stage/"
+cp LICENSE LICENSE-MIT THIRD-PARTY-NOTICES.md README.md "$stage/"
 zip_file="$REPO_ROOT/SiliconBoard-$version-macos-arm64.zip"
 rm -f "$zip_file"
 ditto -c -k --sequesterRsrc --keepParent "$stage" "$zip_file"

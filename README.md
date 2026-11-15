@@ -246,7 +246,24 @@ built-in books, so no external `.bin` file is needed.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+**SiliconBoard's own source is MIT** — see [LICENSE-MIT](LICENSE-MIT).
+
+The application links the chess-rules crate
+[`shakmaty`](https://github.com/niklasf/shakmaty), which is licensed
+**GPL-3.0-or-later**. A Rust binary links its crates statically, so the
+**application as distributed is a combined work under GPL-3.0-or-later**.
+The full licence text is in [LICENSE](LICENSE);
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists every crate in the
+build with its licence.
+
+Practically:
+
+- the original SiliconBoard files may be used under MIT **or** under
+  GPL-3.0-or-later;
+- the combined application — the thing you install and run — is
+  GPL-3.0-or-later, including the right to obtain its complete source;
+- the corresponding source for a release is this repository at that
+  release's tag (the release notes name the tag).
 
 **Credits:** the bundled board themes, piece sets and the figurine font are
 **lichess artwork** (`lichess.org`, asset repository

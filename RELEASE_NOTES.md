@@ -212,3 +212,11 @@ cargo clippy --all-targets
 cargo build --release
 cargo test --release --bin siliconboard board_paint -- --ignored --nocapture
 ```
+
+## Licence
+
+SiliconBoard's own source is MIT (`LICENSE-MIT`). The application links
+`shakmaty` (GPL-3.0-or-later), so the **distributed application as a whole is
+GPL-3.0-or-later**; the full text is in `LICENSE` (also inside the app bundle),
+and `THIRD-PARTY-NOTICES.md` lists every crate in the build. The corresponding
+source for this release is the repository at its release tag.

@@ -23,7 +23,10 @@ const PROJECT_PAGE: &str = "https://github.com/JoergKau";
 const CREDITS_PREFIX: &str = "A UCI chess GUI for Apple Silicon\nProject Page: ";
 
 /// Copyright shown in the credits when no `.app` bundle provides one.
-const COPYRIGHT: &str = "Copyright © 2026 JoKa. MIT License.";
+/// The application as distributed is GPL-3.0-or-later because it links
+/// `shakmaty`; the author's own source is additionally available under MIT
+/// (`LICENSE-MIT`).
+const COPYRIGHT: &str = "Copyright © 2026 JoKa. GPL-3.0-or-later.";
 
 /// Application name shown in the About panel.
 const APP_NAME: &str = "SiliconBoard";
@@ -200,7 +203,7 @@ mod tests {
         let bundled = super::credits_text(false);
         let unbundled = super::credits_text(true);
         assert!(unbundled.trim_start().starts_with(bundled.trim_start()));
-        assert!(unbundled.ends_with("Copyright © 2026 JoKa. MIT License."));
+        assert!(unbundled.ends_with("Copyright © 2026 JoKa. GPL-3.0-or-later."));
         assert_eq!(unbundled.lines().count(), 5);
     }
 

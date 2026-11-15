@@ -4,7 +4,11 @@ version = "1.2.1"
 edition = "2021"
 description = "SiliconBoard — A modern, high-performance UCI Chess GUI for Apple Silicon written in Rust"
 authors = ["SiliconBoard Contributors"]
-license = "MIT"
+# The package as distributed is GPL-3.0-or-later: the binary links
+# `shakmaty` (GPL-3.0-or-later) statically. The author's own source files
+# are additionally available under MIT — see LICENSE (GPL), LICENSE-MIT and
+# THIRD-PARTY-NOTICES.md.
+license = "GPL-3.0-or-later"
 repository = "https://github.com/JoergKau"
 keywords = ["chess", "uci", "gui", "egui", "shakmaty"]
 categories = ["games", "gui"]
