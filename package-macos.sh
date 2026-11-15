@@ -84,7 +84,9 @@ cat > "$PLIST" <<EOF
     <key>LSMinimumSystemVersion</key>     <string>11.0</string>
     <key>NSHighResolutionCapable</key>    <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Joerg Kauschke. GPL-3.0-or-later.</string>
+    <string>Copyright © 2026 JoKa · GPL-3.0-or-later
+own source MIT · see LICENSE-MIT and
+THIRD-PARTY-NOTICES.md</string>
 </dict>
 </plist>
 EOF

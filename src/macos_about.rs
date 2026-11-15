@@ -20,13 +20,19 @@
 const PROJECT_PAGE: &str = "https://github.com/JoergKau";
 
 /// Prefix before the URL in the credits block (used for the link range).
-const CREDITS_PREFIX: &str = "A UCI chess GUI for Apple Silicon\nProject Page: ";
+const CREDITS_PREFIX: &str = "A UCI chess GUI written in Rust.\nProject Page: ";
 
-/// Copyright shown in the credits when no `.app` bundle provides one.
+/// Copyright shown in the credits when no `.app` bundle provides one, and
+/// written into `NSHumanReadableCopyright` by `package-macos.sh` otherwise.
 /// The application as distributed is GPL-3.0-or-later because it links
 /// `shakmaty`; the author's own source is additionally available under MIT
-/// (`LICENSE-MIT`).
-const COPYRIGHT: &str = "Copyright © 2026 JoKa. GPL-3.0-or-later.";
+/// (`LICENSE-MIT`). The later lines say so, so the panel carries the whole
+/// licence statement — the same words the Linux About panel shows. The native
+/// panel is narrower than the Linux modal (~284 pt), so the notices file is
+/// kept whole on its own line instead of being hyphenated mid-name.
+const COPYRIGHT: &str = "Copyright © 2026 JoKa · GPL-3.0-or-later\n\
+                         own source MIT · see LICENSE-MIT and\n\
+                         THIRD-PARTY-NOTICES.md";
 
 /// Application name shown in the About panel.
 const APP_NAME: &str = "SiliconBoard";
@@ -203,8 +209,12 @@ mod tests {
         let bundled = super::credits_text(false);
         let unbundled = super::credits_text(true);
         assert!(unbundled.trim_start().starts_with(bundled.trim_start()));
-        assert!(unbundled.ends_with("Copyright © 2026 JoKa. GPL-3.0-or-later."));
-        assert_eq!(unbundled.lines().count(), 5);
+        assert!(unbundled.ends_with(
+            "Copyright © 2026 JoKa · GPL-3.0-or-later\n\
+             own source MIT · see LICENSE-MIT and\n\
+             THIRD-PARTY-NOTICES.md"
+        ));
+        assert_eq!(unbundled.lines().count(), 7);
     }
 
     /// The URL part must carry the `NSLink` attribute (clickable); the rest
