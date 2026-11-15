@@ -1035,6 +1035,62 @@ impl TournamentStatus {
             parts.join(", ")
         }
     }
+
+    /// The Elo difference implied by the match score, stated from the winning
+    /// engine's point of view, or `None` when no counted game has been played
+    /// or the two slots are not named.
+    ///
+    /// The standard head-to-head conversion (see
+    /// `calculating_engine_elo_difference.md`):
+    ///
+    /// ```text
+    /// ΔR = 400 · log10(S / (1 − S))
+    /// ```
+    ///
+    /// where `S` is the winner's score out of the games played (win = 1,
+    /// draw = ½, loss = 0). A perfect score makes the expression diverge, so
+    /// it is evaluated at `1 − 1/(2n)` — the score one draw would have given
+    /// in the same number of games — and the line says so.
+    pub fn elo_line(&self) -> Option<String> {
+        let played = self.completed_games.saturating_sub(self.failed_games);
+        if played == 0 {
+            return None;
+        }
+        let left = self.engines[0].as_str();
+        let right = self.engines[1].as_str();
+        if left.is_empty() || right.is_empty() || left == right {
+            return None;
+        }
+        let left_points =
+            self.wins.get(left).copied().unwrap_or(0) as f64 + self.draws as f64 / 2.0;
+        let right_points =
+            self.wins.get(right).copied().unwrap_or(0) as f64 + self.draws as f64 / 2.0;
+        if (left_points - right_points).abs() < f64::EPSILON {
+            return Some(format!("{left} and {right} are level — 0 Elo"));
+        }
+        let (winner, loser, points) = if left_points > right_points {
+            (left, right, left_points)
+        } else {
+            (right, left, right_points)
+        };
+        let score = points / played as f64;
+        let (score, perfect) = if score >= 1.0 {
+            (1.0 - 0.5 / played as f64, true)
+        } else {
+            (score, false)
+        };
+        let elo = (400.0 * (score / (1.0 - score)).log10()).round() as i64;
+        Some(if perfect {
+            format!(
+                "{winner} won every one of {played} games — about {elo} Elo stronger than {loser} (extrapolated)"
+            )
+        } else {
+            format!(
+                "{winner} is about {elo} Elo stronger than {loser} — {:.0} % score in {played} games",
+                score * 100.0
+            )
+        })
+    }
 }
 
 /// A match score in standard chess notation: wins plus half a point per draw,
@@ -1067,12 +1123,91 @@ mod tests {
     use super::*;
     use crate::chess::clock::TimeControl;
 
+    fn match_status(engine_a: &str, engine_b: &str) -> TournamentStatus {
+        TournamentStatus {
+            engines: [engine_a.to_string(), engine_b.to_string()],
+            ..TournamentStatus::default()
+        }
+    }
+
     fn config() -> TournamentConfig {
         TournamentConfig {
             white: EngineSpec::from_path(PathBuf::from("/opt/stockfish")),
             black: EngineSpec::from_path(PathBuf::from("/opt/triumviratus")),
             ..TournamentConfig::default()
         }
+    }
+
+    #[test]
+    fn the_elo_line_states_the_difference_from_the_winners_side() {
+        // 3–1 for A in four games: S = 0.75, ΔR = 400 · log10(3) ≈ 190.8.
+        let mut status = match_status("Alpha", "Beta");
+        status.completed_games = 4;
+        status.wins.insert("Alpha".to_string(), 3);
+        status.wins.insert("Beta".to_string(), 1);
+        let line = status.elo_line().unwrap();
+        assert_eq!(
+            line,
+            "Alpha is about 191 Elo stronger than Beta — 75 % score in 4 games"
+        );
+
+        // The same score the other way round swaps the names.
+        let mut status = match_status("Alpha", "Beta");
+        status.completed_games = 4;
+        status.wins.insert("Alpha".to_string(), 1);
+        status.wins.insert("Beta".to_string(), 3);
+        assert!(status
+            .elo_line()
+            .unwrap()
+            .starts_with("Beta is about 191 Elo stronger than Alpha"));
+    }
+
+    #[test]
+    fn draws_count_half_a_point_for_both_engines() {
+        // 1 win + 2 draws each? No: A 1 win, 2 draws, 1 loss → 2–2, level.
+        let mut status = match_status("Alpha", "Beta");
+        status.completed_games = 4;
+        status.wins.insert("Alpha".to_string(), 1);
+        status.wins.insert("Beta".to_string(), 1);
+        status.draws = 2;
+        assert_eq!(
+            status.elo_line().as_deref(),
+            Some("Alpha and Beta are level — 0 Elo")
+        );
+
+        // A 2 wins + 1 draw of 4 games → 2.5 points, S = 0.625, ΔR ≈ 89.
+        let mut status = match_status("Alpha", "Beta");
+        status.completed_games = 4;
+        status.wins.insert("Alpha".to_string(), 2);
+        status.wins.insert("Beta".to_string(), 1);
+        status.draws = 1;
+        assert_eq!(
+            status.elo_line().as_deref(),
+            Some("Alpha is about 89 Elo stronger than Beta — 62 % score in 4 games")
+        );
+    }
+
+    #[test]
+    fn a_perfect_score_is_reported_as_an_extrapolation() {
+        let mut status = match_status("Alpha", "Beta");
+        status.completed_games = 2;
+        status.wins.insert("Alpha".to_string(), 2);
+        let line = status.elo_line().unwrap();
+        assert!(line.starts_with("Alpha won every one of 2 games"));
+        assert!(line.ends_with("about 191 Elo stronger than Beta (extrapolated)"));
+    }
+
+    #[test]
+    fn the_elo_line_needs_a_counted_game_and_two_named_engines() {
+        assert_eq!(match_status("Alpha", "Beta").elo_line(), None);
+        let mut status = match_status("Alpha", "Beta");
+        status.completed_games = 1;
+        status.failed_games = 1;
+        assert_eq!(status.elo_line(), None, "a failed game is not counted");
+        let mut status = match_status("", "");
+        status.completed_games = 2;
+        status.wins.insert(String::new(), 2);
+        assert_eq!(status.elo_line(), None);
     }
 
     #[test]

@@ -15,7 +15,7 @@ use std::fmt::Write;
 
 use shakmaty::{fen::Fen, san::SanPlus, zobrist::Zobrist64, Color, EnPassantMode, Position};
 
-use crate::chess::game_state::{Ending, FenError, GameState};
+use crate::chess::game_state::{Ending, FenError, GameComment, GameState};
 use crate::chess::PieceColor;
 
 /// Movetext is wrapped before this many columns.
@@ -168,9 +168,10 @@ pub fn parse_pgn(text: &str) -> Result<GameState, PgnError> {
     parse_pgn_with_report(text).map(|import| import.game)
 }
 
-/// Like [`parse_pgn`], but also reports what was left out: variations,
-/// comments and further games in the file. The app shows this so nothing is
-/// dropped silently.
+/// Like [`parse_pgn`], but also reports what was left out: variations and
+/// further games in the file. Mainline comments are kept (see
+/// [`PgnImport::comments`]) and shown in the move list; the report covers what
+/// the app cannot show.
 pub fn parse_pgn_with_report(text: &str) -> Result<PgnImport, PgnError> {
     let (tags, movetext, extra_games) = split_tags_and_movetext(text);
     if tags.is_empty() && movetext.trim().is_empty() {
@@ -219,11 +220,11 @@ pub fn parse_pgn_with_report(text: &str) -> Result<PgnImport, PgnError> {
             san: token.clone(),
         })?;
     }
+    game.set_comments(comments);
     Ok(PgnImport {
         game,
         ignored: IgnoredContent {
             variations,
-            comments,
             games: extra_games,
         },
         result,
@@ -417,22 +418,18 @@ fn split_games(text: &str) -> Vec<&str> {
 pub struct IgnoredContent {
     /// Variations (`( … )`) at any depth.
     pub variations: usize,
-    /// Comments (`{ … }` and `; …`).
-    pub comments: usize,
     /// Further games after the first one in the file.
     pub games: usize,
 }
 
 impl IgnoredContent {
-    /// Human-readable list such as `"1 variation, 2 comments"`, or `None`
-    /// when nothing was skipped.
+    /// Human-readable list such as `"1 variation, 1 further game"`, or `None`
+    /// when nothing was skipped. Comments are no longer listed: the move list
+    /// shows them.
     pub fn summary(&self) -> Option<String> {
         let mut parts = Vec::new();
         if self.variations > 0 {
             parts.push(format!("{} variation(s)", self.variations));
-        }
-        if self.comments > 0 {
-            parts.push(format!("{} comment(s)", self.comments));
         }
         if self.games > 0 {
             parts.push(format!("{} further game(s)", self.games));
@@ -492,16 +489,18 @@ fn parse_tag(line: &str) -> Option<(String, String)> {
     Some((name.to_string(), value))
 }
 
-/// Movetext → SAN move tokens, plus the number of variations and comments
-/// that were skipped. Skips comments (`{…}` and `;…`), variations (`(…)`,
-/// nested), NAGs (`$n`), move numbers (`12.` / `12...`), annotation glyphs
-/// (`!?`) and the game result.
-fn movetext_tokens(movetext: &str) -> (Vec<String>, usize, usize) {
+/// Movetext → SAN move tokens, plus the number of variations and the comments
+/// that belong to the mainline. Skips variations (`(…)`, nested), NAGs (`$n`),
+/// move numbers (`12.` / `12...`), annotation glyphs (`!?`) and the game
+/// result. Comments (`{…}` and `;…`) are returned with the number of mainline
+/// half-moves played before them, so the move list can print them in place;
+/// comments inside a variation are dropped, since the app shows the mainline.
+fn movetext_tokens(movetext: &str) -> (Vec<String>, usize, Vec<GameComment>) {
     let mut tokens = Vec::new();
     let mut chars = movetext.chars().peekable();
     let mut variation_depth = 0usize;
     let mut variations = 0usize;
-    let mut comments = 0usize;
+    let mut comments: Vec<GameComment> = Vec::new();
     let mut current = String::new();
 
     let flush = |current: &mut String, tokens: &mut Vec<String>, depth: usize| {
@@ -527,20 +526,28 @@ fn movetext_tokens(movetext: &str) -> (Vec<String>, usize, usize) {
         match c {
             '{' => {
                 flush(&mut current, &mut tokens, variation_depth);
-                comments += 1;
+                let mut text = String::new();
                 for inner in chars.by_ref() {
                     if inner == '}' {
                         break;
                     }
+                    text.push(inner);
+                }
+                if variation_depth == 0 {
+                    push_comment(&mut comments, tokens.len(), &text);
                 }
             }
             ';' => {
                 flush(&mut current, &mut tokens, variation_depth);
-                comments += 1;
+                let mut text = String::new();
                 for inner in chars.by_ref() {
                     if inner == '\n' {
                         break;
                     }
+                    text.push(inner);
+                }
+                if variation_depth == 0 {
+                    push_comment(&mut comments, tokens.len(), &text);
                 }
             }
             '(' => {
@@ -560,6 +567,15 @@ fn movetext_tokens(movetext: &str) -> (Vec<String>, usize, usize) {
     }
     flush(&mut current, &mut tokens, variation_depth);
     (tokens, variations, comments)
+}
+
+/// Add one comment, with its whitespace collapsed so it flows inline in the
+/// move list. Blank comments (an empty `{}`) are dropped.
+fn push_comment(comments: &mut Vec<GameComment>, ply: usize, text: &str) {
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if !text.is_empty() {
+        comments.push(GameComment { ply, text });
+    }
 }
 
 /// Remove a move number glued to the move: `1.e4` → `e4`, `12...Nc6` → `Nc6`.
@@ -763,7 +779,7 @@ mod tests {
     }
 
     #[test]
-    fn report_counts_variations_comments_and_further_games() {
+    fn report_counts_variations_and_further_games_and_keeps_comments() {
         let text = "[Event \"One\"]\n\n1. e4 {a} e5 (1... c5) 2. Nf3 ; note\n*\n\n[Event \"Two\"]\n\n1. d4 *\n";
         let import = parse_pgn_with_report(text).unwrap();
         assert_eq!(sans(&import.game), vec!["e4", "e5", "Nf3"]);
@@ -771,13 +787,58 @@ mod tests {
             import.ignored,
             IgnoredContent {
                 variations: 1,
-                comments: 2,
                 games: 1
             }
         );
         assert_eq!(
             import.ignored.summary().as_deref(),
-            Some("ignored 1 variation(s), 2 comment(s), 1 further game(s)")
+            Some("ignored 1 variation(s), 1 further game(s)")
+        );
+        // Both mainline comments are kept, each after the move it follows;
+        // the comment inside the variation is not.
+        assert_eq!(
+            import.game.comments().to_vec(),
+            vec![
+                GameComment {
+                    ply: 1,
+                    text: "a".to_string()
+                },
+                GameComment {
+                    ply: 3,
+                    text: "note".to_string()
+                },
+            ]
+        );
+        assert_eq!(import.game.comments().len(), 2);
+    }
+
+    #[test]
+    fn a_comment_before_the_first_move_has_ply_zero() {
+        let text = "[Event \"Intro\"]\n\n{ A short introduction. } 1. e4 e5 { Reply } 2. Nf3 *\n";
+        let import = parse_pgn_with_report(text).unwrap();
+        assert_eq!(
+            import.game.comments().to_vec(),
+            vec![
+                GameComment {
+                    ply: 0,
+                    text: "A short introduction.".to_string()
+                },
+                GameComment {
+                    ply: 2,
+                    text: "Reply".to_string()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn multiline_comment_text_is_collapsed_to_one_line() {
+        let text = "1. e4 {A long note\n   that spans lines } e5 *\n";
+        let import = parse_pgn_with_report(text).unwrap();
+        assert_eq!(import.game.comments().len(), 1);
+        assert_eq!(
+            import.game.comments()[0].text,
+            "A long note that spans lines"
         );
     }
 
@@ -900,7 +961,6 @@ mod tests {
             import.ignored.variations, 0,
             "no variations in the first game"
         );
-        assert_eq!(import.ignored.comments, 0, "no comments in the first game");
         assert_eq!(
             import.ignored.games, 20,
             "the other games of the collection are skipped"

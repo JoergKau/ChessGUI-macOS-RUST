@@ -56,11 +56,26 @@ pub fn show(
     let current = game.cur_ply();
     let mut target: Option<usize> = None;
 
+    // Comments read from a PGN, grouped by the half-move they follow (0 = a
+    // note before the first move). They are drawn inline in the move flow, in
+    // green, so an annotated game reads as one paragraph like the moves do.
+    let mut comments_by_ply: std::collections::BTreeMap<usize, Vec<&str>> =
+        std::collections::BTreeMap::new();
+    for comment in game.comments() {
+        comments_by_ply
+            .entry(comment.ply)
+            .or_default()
+            .push(comment.text.as_str());
+    }
+
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
             ui.horizontal_wrapped(|ui| {
+                for text in comments_by_ply.get(&0).into_iter().flatten() {
+                    ui.label(RichText::new(*text).color(theme::PGN_COMMENT));
+                }
                 for line in lines {
                     // A line that starts with Black's move is numbered `N...`.
                     let number = if line.white.is_some() {
@@ -91,6 +106,9 @@ pub fn show(
                         if follow && current == entry.ply {
                             response.scroll_to_me(Some(Align::Center));
                         }
+                        for text in comments_by_ply.get(&entry.ply).into_iter().flatten() {
+                            ui.label(RichText::new(*text).color(theme::PGN_COMMENT));
+                        }
                     }
                     ui.add_space(10.0);
                 }
@@ -109,6 +127,7 @@ pub fn show(
                 );
             }
         });
+    drop(comments_by_ply);
 
     if let Some(ply) = target {
         game.goto_ply(ply);

@@ -39,6 +39,10 @@ pub const WHITE_MOVE: Color32 = Color32::from_rgb(0xff, 0xff, 0xff);
 /// Black's moves in the move list (light red), so each side reads at a glance.
 pub const BLACK_MOVE: Color32 = Color32::from_rgb(0xff, 0x9e, 0x9e);
 
+/// PGN comments in the move list: a soft green, so the annotator's prose is
+/// distinct from the moves without competing with the neon evaluation green.
+pub const PGN_COMMENT: Color32 = Color32::from_rgb(0x78, 0xc8, 0x8c);
+
 /// Engine is searching.
 pub const ALERT_YELLOW: Color32 = Color32::from_rgb(0xf1, 0xfa, 0x8c);
 

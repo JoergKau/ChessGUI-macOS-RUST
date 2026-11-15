@@ -147,6 +147,19 @@ pub struct Ply {
     pub after: Chess,
 }
 
+/// A comment read from a PGN file, kept for the move list.
+///
+/// `ply` counts the half-moves played before the comment, so `0` is a note
+/// before the first move and `n` follows the n-th half-move. Comments from
+/// variations are not kept; the app shows the mainline only.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GameComment {
+    /// Half-moves played before this comment.
+    pub ply: usize,
+    /// Comment text, with runs of whitespace collapsed to single spaces.
+    pub text: String,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GameState
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,6 +189,9 @@ pub struct GameState {
     /// Whether the displayed position is a threefold repetition, with the
     /// revision and cursor it was counted for.
     repetition_memo: RefCell<Option<(u64, usize, bool)>>,
+    /// Comments read from a PGN, shown in the move list after the move they
+    /// follow. Empty for a game played in the app or typed in by hand.
+    comments: Vec<GameComment>,
 }
 
 impl Default for GameState {
@@ -202,6 +218,7 @@ impl GameState {
             revision: 0,
             fen_memo: RefCell::new(None),
             repetition_memo: RefCell::new(None),
+            comments: Vec::new(),
         }
     }
 
@@ -267,6 +284,18 @@ impl GameState {
     /// views (the PGN move list) use it to cache their result.
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    /// Comments read from a PGN, in game order. The move list shows each one
+    /// after the move it follows.
+    pub fn comments(&self) -> &[GameComment] {
+        &self.comments
+    }
+
+    /// Attach the comments of a PGN import. The importer calls this once; a
+    /// game played in the app keeps no comments.
+    pub fn set_comments(&mut self, comments: Vec<GameComment>) {
+        self.comments = comments;
     }
 
     /// Slice of recorded plies that are currently considered played,

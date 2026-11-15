@@ -833,6 +833,10 @@ pub fn show_finished(ctx: &egui::Context, status: &TournamentStatus) -> bool {
                 .size(14.0)
                 .color(theme::MUTED),
             );
+            // The Elo difference the result implies, from the winner's side.
+            if let Some(line) = status.elo_line() {
+                ui.label(RichText::new(line).size(14.0).color(theme::NEON_GREEN));
+            }
             if !status.results.is_empty() {
                 ui.add_space(6.0);
                 ui.label(
