@@ -40,9 +40,10 @@ SiliconBoard-1.2.1-macos-arm64.zip
 ```
 
 It is the same bundle the packaging script produces — one folder
-(`SiliconBoard-1.2.1/`) holding `SiliconBoard.app`, `LICENSE` and this
-README — and it is **committed to the repository**, so no build is needed to
-run SiliconBoard. It is for macOS on Apple Silicon.
+(`SiliconBoard-1.2.1/`) holding `SiliconBoard.app`, `LICENSE`, `LICENSE-MIT`,
+`THIRD-PARTY-NOTICES.md` and this README — and it is **committed to the
+repository**, so no build is needed to run SiliconBoard. It is for macOS on
+Apple Silicon.
 
 To use it:
 
@@ -199,8 +200,8 @@ to the source.
 
 **Distribution:** the script also packs the signed app into
 `SiliconBoard-<version>-macos-arm64.zip` — one folder holding the app plus
-`LICENSE` and `README.md` — and prints the zip's SHA-256 for the release
-listing. The app is signed _before_ it is zipped (modifying a signed app
+`LICENSE`, `LICENSE-MIT`, `THIRD-PARTY-NOTICES.md` and `README.md` — and prints
+the zip's SHA-256 for the release listing. The app is signed _before_ it is zipped (modifying a signed app
 breaks the seal), and the zip is verified by unzipping it and re-checking
 the signature.
 
