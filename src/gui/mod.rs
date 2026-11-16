@@ -19,6 +19,7 @@
 //! ```
 
 pub mod board_view;
+pub mod database_ui;
 pub mod eval_panel;
 pub mod figurines;
 pub mod menu_bar;

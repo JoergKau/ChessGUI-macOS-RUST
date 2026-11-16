@@ -1,6 +1,6 @@
 [package]
 name = "siliconboard"
-version = "1.2.1"
+version = "1.3.0"
 edition = "2021"
 description = "SiliconBoard — A modern, high-performance UCI Chess GUI for Apple Silicon written in Rust"
 authors = ["SiliconBoard Contributors"]
@@ -76,6 +76,21 @@ libc = "0.2"
 log = "0.4"
 env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
 
+# ── System locale for locale-aware digit grouping ───────────────────────────
+# Already present as a transitive dependency of egui's font provider. The
+# database windows use it for thousands separators ("12.123" in German,
+# "12,123" in English) instead of hard-coding one style.
+sys-locale = "0.3"
+
+# ── Database engine: one SQLite file per chess database (`.sbd`) ────────────
+# `bundled` compiles a private SQLite, so no system library is needed and the
+# file format is identical on every machine. MIT / public domain.
+rusqlite = { version = "0.41", features = ["bundled"] }
+
+# ── Scid 5.x / Scid vs PC files (`.si4`, `.si5`) as import and export ───────
+# GPL-3.0-or-later, like `shakmaty`; only `database/scid.rs` names it. Behind a
+# feature so a build without the crate still compiles and hides Scid support.
+chess-scid-rw = { version = "1.0", optional = true }
 
 # ── macOS About panel (src/macos_about.rs): Objective-C bindings ────────────
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -86,6 +101,12 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 [dev-dependencies]
 # Tests run alongside `cargo test`; lightweight helpers.
 tempfile = "3.10"
+
+[features]
+# Scid `.si4`/`.si5` import and export. Off: those files are refused and the
+# menu items are hidden, and the app builds without the extra GPL crate.
+default = ["scid"]
+scid = ["dep:chess-scid-rw"]
 
 # ── Build profile: tuned for Apple Silicon desktop GUI workloads ────────────
 [profile.dev]

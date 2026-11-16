@@ -72,6 +72,14 @@ pub enum MenuAction {
     ToggleFigurinesEval,
     /// View → Analysis arrows: show or hide the engines' best-move arrows.
     ToggleAnalysisArrows,
+    /// Database → New database…: name, description and a PGN to import.
+    NewDatabase,
+    /// Database → Open database…: pick an `.sbd`, `.pgn`, `.si4` or `.si5`.
+    OpenDatabase,
+    /// Database → Show database: bring the overview or browser back.
+    ShowDatabase,
+    /// Database → Close database: forget the open database.
+    CloseDatabase,
     /// Tournament → New tournament…: open the engine-match dialog.
     OpenTournament,
     /// Tournament → Stop tournament: stop the running match.
@@ -130,6 +138,8 @@ pub struct MenuState<'a> {
     pub tournament_has_run: bool,
     /// Whether a multi-game PGN is loaded, so the games list can be reopened.
     pub pgn_games_available: bool,
+    /// Whether a database is open, so its windows can be shown or closed.
+    pub database_loaded: bool,
 }
 
 /// The flat toolbar look: padded outlined buttons, a slightly
@@ -427,6 +437,31 @@ pub fn show(ui: &mut Ui, state: &MenuState, fen_input: &mut String) -> Option<Me
                 .clicked()
             {
                 action = Some(MenuAction::ToggleFigurinesEval);
+                ui.close();
+            }
+        });
+        ui.menu_button("Database", |ui| {
+            if ui.button("New database…").clicked() {
+                action = Some(MenuAction::NewDatabase);
+                ui.close();
+            }
+            if ui.button("Open database…").clicked() {
+                action = Some(MenuAction::OpenDatabase);
+                ui.close();
+            }
+            let has_database = state.database_loaded;
+            let show = ui
+                .add_enabled(has_database, egui::Button::new("Show database"))
+                .on_disabled_hover_text("Open a database first.");
+            if show.clicked() {
+                action = Some(MenuAction::ShowDatabase);
+                ui.close();
+            }
+            let close = ui
+                .add_enabled(has_database, egui::Button::new("Close database"))
+                .on_disabled_hover_text("No database is open.");
+            if close.clicked() {
+                action = Some(MenuAction::CloseDatabase);
                 ui.close();
             }
         });

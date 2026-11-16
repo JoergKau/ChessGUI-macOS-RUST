@@ -673,6 +673,25 @@ impl GameState {
             .0
     }
 
+    /// Move the cursor to the first half-move after which the game has the
+    /// position with this Polyglot key, and return that half-move.
+    ///
+    /// Used when a game is opened from a database search for a position: the
+    /// board should show the searched position, not the start. Returns `None`
+    /// — and leaves the cursor at the start — when the key does not occur
+    /// (for example a game whose stored PGN differs from the indexed text).
+    pub fn goto_position_key(&mut self, key: u64) -> Option<usize> {
+        let total = self.total_plies();
+        for ply in 0..=total {
+            self.goto_ply(ply);
+            if self.zobrist() == key {
+                return Some(ply);
+            }
+        }
+        self.goto_ply(0);
+        None
+    }
+
     // ── Internal ─────────────────────────────────────────────────────────
 
     /// Append a new ply at `cur_ply`, discarding any redo tail.
@@ -1149,6 +1168,31 @@ mod tests {
             "463b96181691fc9c",
             "GameState::zobrist() should match PolyGlot canonical value"
         );
+    }
+
+    #[test]
+    fn a_searched_position_is_found_at_its_ply() {
+        let mut g = GameState::new();
+        for (from, to) in [("e2", "e4"), ("e7", "e5"), ("g1", "f3")] {
+            g.play_squares(
+                Square::from_ascii(from.as_bytes()).unwrap(),
+                Square::from_ascii(to.as_bytes()).unwrap(),
+                None,
+            )
+            .unwrap();
+        }
+        // Key of the position after 1.e4, taken from the same game.
+        let mut probe = g.clone();
+        probe.goto_ply(1);
+        let after_e4 = probe.zobrist();
+
+        g.goto_start();
+        assert_eq!(g.goto_position_key(after_e4), Some(1));
+        assert_eq!(g.cur_ply(), 1, "the board shows the searched position");
+
+        // A key the game never had: nothing found, cursor back at the start.
+        assert_eq!(g.goto_position_key(u64::MAX), None);
+        assert_eq!(g.cur_ply(), 0);
     }
 
     #[test]

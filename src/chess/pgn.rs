@@ -239,6 +239,49 @@ fn result_from_movetext(movetext: &str) -> Option<PgnResult> {
     movetext.split_whitespace().rev().find_map(PgnResult::parse)
 }
 
+/// The `[Tag "value"]` pairs and the movetext of the first game in `text`.
+///
+/// The database importer needs both without paying for a full parse: it stores
+/// published games verbatim and only reads their headers and move count.
+pub fn scan_game_text(text: &str) -> (Vec<(String, String)>, String) {
+    let (tags, movetext, _further_games) = split_tags_and_movetext(text);
+    (tags, movetext)
+}
+
+/// A cheap description of a game's movetext, built for the database importer.
+///
+/// Nothing here validates a move: it counts the mainline SAN tokens and notes
+/// what the text contains, which is all the game table and the dedupe key need.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MovetextScan {
+    /// Mainline half-moves (move numbers, comments, variations and NAGs are
+    /// skipped, exactly as when reading the game on the board).
+    pub plies: usize,
+    /// Top-level variations.
+    pub variations: usize,
+    /// Whether the text contains a comment (`{…}` or `;…`), at any depth.
+    pub comments: bool,
+    /// Whether the text contains a NAG (`$n`).
+    pub nags: bool,
+    /// The first up-to-eight mainline SAN tokens.
+    pub first_moves: Vec<String>,
+    /// The last up-to-eight mainline SAN tokens, in game order.
+    pub last_moves: Vec<String>,
+}
+
+/// Count and describe a movetext without validating it.
+pub fn scan_movetext(movetext: &str) -> MovetextScan {
+    let (tokens, variations, _comments) = movetext_tokens(movetext);
+    MovetextScan {
+        plies: tokens.len(),
+        variations,
+        comments: movetext.contains('{') || movetext.contains(';'),
+        nags: movetext.contains('$'),
+        first_moves: tokens.iter().take(8).cloned().collect(),
+        last_moves: tokens.iter().rev().take(8).rev().cloned().collect(),
+    }
+}
+
 /// The result token of a PGN game, when the file states one.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PgnResult {

@@ -9,6 +9,7 @@ use eframe::egui;
 mod app;
 mod assets;
 mod chess;
+mod database;
 mod engine;
 mod gui;
 mod logging;

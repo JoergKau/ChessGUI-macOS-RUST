@@ -23,12 +23,15 @@ flat toolbar across the top.
   report a reason.
 - **Tournaments:** a two-engine match dialog plays a configurable engine
   match on the main board (time control, books, adjudication, PGN output).
+- **Chess databases:** keep game collections in SQLite-backed `.sbd` files,
+  import PGN or Scid collections, filter and sort them, and load a game onto
+  the board. See [Chess databases](#chess-databases).
 - **Everything else:** PolyGlot opening books, PGN open/save including a
   multi-game browser, FEN import/export, board themes and piece sets,
   figurine piece letters, persistent settings, a session log.
 
 A short summary of what SiliconBoard does lives in
-[features-list.md](features-list.md); what ships in v1.2.1 is in
+[features-list.md](features-list.md); what ships in v1.3.0 is in
 [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ## The ready-to-run app
@@ -36,11 +39,11 @@ A short summary of what SiliconBoard does lives in
 The repository contains the built, signed app:
 
 ```
-SiliconBoard-1.2.1-macos-arm64.zip
+SiliconBoard-1.3.0-macos-arm64.zip
 ```
 
 It is the same bundle the packaging script produces — one folder
-(`SiliconBoard-1.2.1/`) holding `SiliconBoard.app`, `LICENSE`, `LICENSE-MIT`,
+(`SiliconBoard-1.3.0/`) holding `SiliconBoard.app`, `LICENSE`, `LICENSE-MIT`,
 `THIRD-PARTY-NOTICES.md` and this README — and it is **committed to the
 repository**, so no build is needed to run SiliconBoard. It is for macOS on
 Apple Silicon.
@@ -61,7 +64,7 @@ The SHA-256 of the zip is printed by `./package-macos.sh` when it rebuilds
 the app and is listed with each release; check a download with:
 
 ```shell
-shasum -a 256 SiliconBoard-1.2.1-macos-arm64.zip
+shasum -a 256 SiliconBoard-1.3.0-macos-arm64.zip
 ```
 
 ## Requirements
@@ -141,6 +144,41 @@ to every loaded engine — and to every engine loaded later — as the
   `Found 510 WDL and 510 DTZ tablebase files (up to 6-man)`. The files and
   what to download are described at
   [syzygy-tables.info](https://syzygy-tables.info/).
+
+## Chess databases
+
+SiliconBoard keeps chess databases as one SQLite file each (`*.sbd`). Games
+are stored exactly as the PGN they came from, so comments, variations, NAGs
+and unknown tags survive; a metadata index beside them makes filtering and
+sorting instant even for millions of games.
+
+- **New database…** (Database menu) asks for a name, a description and a PGN
+  file, then imports it. The result lives in
+  `~/Documents/SiliconBoard/databases/<file name>.sbd`.
+- **Open database…** opens an `.sbd`; a `.pgn`, `.si4` or `.si5` is offered
+  as a new database instead, so a downloaded collection or a Scid file is
+  converted once and opens instantly afterwards.
+- The overview shows the game, player and event counts and the housekeeping
+  actions: **Remove Duplicates** (same players, date, result and move count),
+  **Remove Empty Games**, **Add Games** (import another PGN) and
+  **Export to PGN**.
+- **Open database →** shows the browser: filter by player name, side, Elo,
+  event, result, year and position; click a column header to sort; double
+  click a game to load it on the board.
+- Re-importing the same file adds nothing — every game carries a stable
+  fingerprint — so the monthly update of a downloaded collection only
+  appends what is new.
+
+The **Position** filter matches a FEN against an index of every position of
+each game. That index is built during an import when *Index
+positions* is ticked (it is on by default and makes the import slower); a
+database imported without it says so when the Position field is used.
+
+Scid support (`si4`/`si5`) comes from a GPL-3.0-or-later crate and is a
+Cargo feature (`scid`, on by default). Converting a Gigabase takes a while
+and needs roughly the size of the three Scid files in memory while it runs.
+Nothing is downloaded: the Lumbras Gigabase and similar collections are
+CC BY-NC 4.0 and must be fetched by the user.
 
 ## Session log (troubleshooting)
 
@@ -250,7 +288,9 @@ built-in books, so no external `.bin` file is needed.
 **SiliconBoard's own source is MIT** — see [LICENSE-MIT](LICENSE-MIT).
 
 The application links the chess-rules crate
-[`shakmaty`](https://github.com/niklasf/shakmaty), which is licensed
+[`shakmaty`](https://github.com/niklasf/shakmaty) and, unless the `scid`
+feature is switched off, the Scid reader
+[`chess-scid-rw`](https://github.com/Fab2bprog/chess-scid-rw), both licensed
 **GPL-3.0-or-later**. A Rust binary links its crates statically, so the
 **application as distributed is a combined work under GPL-3.0-or-later**.
 The full licence text is in [LICENSE](LICENSE);

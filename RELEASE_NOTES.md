@@ -1,5 +1,33 @@
 # SiliconBoard — Release Notes
 
+## v1.3.0
+
+**Chess databases:** SiliconBoard now keeps collections of games in its own
+SQLite-backed `.sbd` files. Create one from a PGN file, or open an existing
+database, and browse it in a filterable, sortable table. Games are stored
+verbatim, so comments, variations, NAGs and unknown tags survive the import.
+
+- **Import:** PGN files and Scid `.si4`/`.si5` files. A repeated import adds
+  nothing, and an optional position index makes every position of every game
+  searchable.
+- **Browser:** filter by player (either colour or White/Black), Elo range,
+  event, result, year and position; sort by any column; scroll through pages
+  of games. Double-click a game to load it on the board.
+- **Overview:** name, description, file location, game/player/event counts,
+  and housekeeping actions — remove duplicates, remove empty games, add more
+  games, rebuild the position index and export the current selection to PGN.
+- **Player names:** the Player filter suggests matching stored names in a
+  popup while you type.
+- **Presentation:** the database windows now follow the main window's palette
+  and use one padded layout with equal left/right margins. Counts use the
+  system locale's thousands separator (`12.123` in German, `12,123` in
+  English), active filters turn yellow, and the key actions use the same green
+  and warning colours as the rest of the app.
+
+**Licensing:** the Scid reader (`chess-scid-rw`) is GPL-3.0-or-later, like
+`shakmaty`. The application as distributed therefore remains
+GPL-3.0-or-later; `LICENSE` and `THIRD-PARTY-NOTICES.md` already cover it.
+
 ## v1.2.1
 
 **Stopping a tournament:** the red **Stop** button in the top bar now ends a

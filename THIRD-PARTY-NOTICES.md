@@ -17,10 +17,17 @@ release is this repository at the release tag.
 | Crate | Version | Licence | Copyright |
 | --- | --- | --- | --- |
 | `shakmaty` | 0.30.2 | GPL-3.0-or-later | Niklas Fiekas and other shakmaty contributors |
+| `chess-scid-rw` | (see the table below) | GPL-3.0-or-later | Fab2bprog and other contributors |
 
 `shakmaty` provides move generation, SAN, FEN, Zobrist keys and
 position equality. Its source is at <https://github.com/niklasf/shakmaty>
 and on crates.io.
+
+`chess-scid-rw` reads and writes Scid 4/5 databases for the optional
+database import. Its source is at
+<https://github.com/Fab2bprog/chess-scid-rw> and on crates.io. It is a
+Cargo feature (`scid`, on by default); a build with `--no-default-features`
+omits it.
 
 ## Bundled assets
 
@@ -96,6 +103,7 @@ own terms; see `public/LICENSING.md`.
 | `cfg-if` | 1.0.5 | MIT OR Apache-2.0 |
 | `cfg_aliases` | 0.2.2 | MIT |
 | `cgl` | 0.3.2 | MIT / Apache-2.0 |
+| `chess-scid-rw` | 1.0.0 | GPL-3.0-or-later |
 | `clipboard-win` | 5.4.3 | BSL-1.0 |
 | `codespan-reporting` | 0.13.1 | Apache-2.0 |
 | `color` | 0.3.3 | Apache-2.0 OR MIT |
@@ -147,6 +155,8 @@ own terms; see `public/LICENSING.md`.
 | `euclid` | 0.22.14 | MIT OR Apache-2.0 |
 | `event-listener` | 5.4.2 | Apache-2.0 OR MIT |
 | `event-listener-strategy` | 0.5.4 | Apache-2.0 OR MIT |
+| `fallible-iterator` | 0.3.0 | MIT/Apache-2.0 |
+| `fallible-streaming-iterator` | 0.1.9 | MIT/Apache-2.0 |
 | `fastrand` | 2.5.0 | Apache-2.0 OR MIT |
 | `fax` | 0.2.7 | MIT |
 | `fdeflate` | 0.3.7 | MIT OR Apache-2.0 |
@@ -190,6 +200,7 @@ own terms; see `public/LICENSING.md`.
 | `hashbrown` | 0.15.5 | MIT OR Apache-2.0 |
 | `hashbrown` | 0.16.1 | MIT OR Apache-2.0 |
 | `hashbrown` | 0.17.1 | MIT OR Apache-2.0 |
+| `hashlink` | 0.12.2 | MIT OR Apache-2.0 |
 | `hermit-abi` | 0.5.3 | MIT OR Apache-2.0 |
 | `hex` | 0.4.3 | MIT OR Apache-2.0 |
 | `icu_collections` | 2.4.0 | Unicode-3.0 |
@@ -225,6 +236,7 @@ own terms; see `public/LICENSING.md`.
 | `libloading` | 0.8.9 | ISC |
 | `libm` | 0.2.16 | MIT |
 | `libredox` | 0.1.25 | MIT |
+| `libsqlite3-sys` | 0.39.1 | MIT |
 | `linebender_resource_handle` | 0.1.1 | Apache-2.0 OR MIT |
 | `linux-raw-sys` | 0.12.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
 | `linux-raw-sys` | 0.4.15 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT |
@@ -344,6 +356,8 @@ own terms; see `public/LICENSING.md`.
 | `rgb` | 0.8.53 | MIT |
 | `roxmltree` | 0.20.0 | MIT OR Apache-2.0 |
 | `roxmltree` | 0.21.2 | MIT OR Apache-2.0 |
+| `rsqlite-vfs` | 0.2.0 | MIT |
+| `rusqlite` | 0.41.1 | MIT |
 | `rustc-hash` | 1.1.0 | Apache-2.0/MIT |
 | `rustc-hash` | 2.1.3 | Apache-2.0 OR MIT |
 | `rustc_version` | 0.4.1 | MIT OR Apache-2.0 |
@@ -379,6 +393,7 @@ own terms; see `public/LICENSING.md`.
 | `smithay-clipboard` | 0.7.3 | MIT |
 | `smol_str` | 0.2.2 | MIT OR Apache-2.0 |
 | `spirv` | 0.4.0+sdk-1.4.341.0 | Apache-2.0 |
+| `sqlite-wasm-rs` | 0.6.3 | MIT |
 | `stable_deref_trait` | 1.2.1 | MIT OR Apache-2.0 |
 | `static_assertions` | 1.1.0 | MIT OR Apache-2.0 |
 | `strict-num` | 0.1.1 | MIT |
@@ -427,6 +442,7 @@ own terms; see `public/LICENSING.md`.
 | `utf8parse` | 0.2.2 | Apache-2.0 OR MIT |
 | `utf_types` | 1.0.0 | Apache-2.0 OR MIT |
 | `uuid` | 1.29.0 | Apache-2.0 OR MIT |
+| `vcpkg` | 0.2.15 | MIT/Apache-2.0 |
 | `vello_common` | 0.2.0 | Apache-2.0 OR MIT |
 | `vello_cpu` | 0.2.0 | Apache-2.0 OR MIT |
 | `version_check` | 0.9.5 | MIT/Apache-2.0 |
@@ -526,12 +542,12 @@ own terms; see `public/LICENSING.md`.
 
 ### Licence summary
 
-- 215 × MIT OR Apache-2.0
-- 110 × MIT
+- 216 × MIT OR Apache-2.0
+- 114 × MIT
 - 51 × Apache-2.0 OR MIT
 - 18 × Unicode-3.0
+- 17 × MIT/Apache-2.0
 - 15 × Apache-2.0
-- 14 × MIT/Apache-2.0
 - 12 × Zlib OR Apache-2.0 OR MIT
 - 9 × Unlicense OR MIT
 - 7 × Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT
@@ -539,6 +555,7 @@ own terms; see `public/LICENSING.md`.
 - 4 × Zlib
 - 4 × BSD-3-Clause
 - 3 × Apache-2.0/MIT
+- 2 × GPL-3.0-or-later
 - 2 × BSL-1.0
 - 2 × MIT OR Zlib OR Apache-2.0
 - 2 × BSD-3-Clause OR Apache-2.0
@@ -554,4 +571,3 @@ own terms; see `public/LICENSING.md`.
 - 1 × (MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0
 - 1 × ISC
 - 1 × Apache-2.0 OR GPL-2.0-only
-- 1 × GPL-3.0-or-later

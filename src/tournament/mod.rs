@@ -1066,7 +1066,7 @@ impl TournamentStatus {
         let right_points =
             self.wins.get(right).copied().unwrap_or(0) as f64 + self.draws as f64 / 2.0;
         if (left_points - right_points).abs() < f64::EPSILON {
-            return Some(format!("{left} and {right} are level — 0 Elo"));
+            return Some(format!("{left} and {right} are of equal strength"));
         }
         let (winner, loser, points) = if left_points > right_points {
             (left, right, left_points)
@@ -1164,7 +1164,7 @@ mod tests {
 
     #[test]
     fn draws_count_half_a_point_for_both_engines() {
-        // 1 win + 2 draws each? No: A 1 win, 2 draws, 1 loss → 2–2, level.
+        // 1 win + 2 draws + 1 loss each → 2–2, so the score says nothing.
         let mut status = match_status("Alpha", "Beta");
         status.completed_games = 4;
         status.wins.insert("Alpha".to_string(), 1);
@@ -1172,7 +1172,7 @@ mod tests {
         status.draws = 2;
         assert_eq!(
             status.elo_line().as_deref(),
-            Some("Alpha and Beta are level — 0 Elo")
+            Some("Alpha and Beta are of equal strength")
         );
 
         // A 2 wins + 1 draw of 4 games → 2.5 points, S = 0.625, ΔR ≈ 89.

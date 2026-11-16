@@ -38,6 +38,7 @@ OUT = os.path.join(ROOT, "THIRD-PARTY-NOTICES.md")
 # Crates that are already known to be copyleft, with why.
 EXPECTED = {
     "shakmaty": "chess rules; GPL-3.0-or-later makes the application GPL",
+    "chess-scid-rw": "Scid .si4/.si5 import; GPL-3.0-or-later",
 }
 
 COPYLEFT = re.compile(r"\b(?:A?GPL|LGPL|MPL|EPL|CDDL|SSPL|EUPL|CC-BY-SA)", re.I)
@@ -214,10 +215,17 @@ def write(rows: list[tuple[str, str, str]]) -> int:
         "| Crate | Version | Licence | Copyright |",
         "| --- | --- | --- | --- |",
         f"| `shakmaty` | {version} | GPL-3.0-or-later | Niklas Fiekas and other shakmaty contributors |",
+        "| `chess-scid-rw` | (see the table below) | GPL-3.0-or-later | Fab2bprog and other contributors |",
         "",
         "`shakmaty` provides move generation, SAN, FEN, Zobrist keys and",
         "position equality. Its source is at <https://github.com/niklasf/shakmaty>",
         "and on crates.io.",
+        "",
+        "`chess-scid-rw` reads and writes Scid 4/5 databases for the optional",
+        "database import. Its source is at",
+        "<https://github.com/Fab2bprog/chess-scid-rw> and on crates.io. It is a",
+        "Cargo feature (`scid`, on by default); a build with `--no-default-features`",
+        "omits it.",
         "",
         "## Bundled assets",
         "",

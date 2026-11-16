@@ -26,11 +26,13 @@ use crate::chess::openings::{OpeningError, OpeningNames};
 use crate::chess::pgn::{self, PgnCollection, PgnError, PgnImport};
 use crate::chess::players::{accepts_draw, GameMode, Seat};
 use crate::chess::{BookError, GameState, PieceColor, PolyglotBook};
+use crate::database::{self, DatabaseInfo, DbStats, ImportOptions, JobProgress};
 use crate::engine::protocol::GoControl;
 use crate::engine::{
     AnalysisStatus, EngineError, EngineHost, EngineProcess, EngineWake, SearchGoal,
 };
 use crate::gui::board_view::{self, BoardAction, BoardView, SetupBoardAction};
+use crate::gui::database_ui::{DatabaseUi, DbAction, DbScreen, RunningJob};
 use crate::gui::eval_panel::{self, EvalCard, EvalSummary};
 use crate::gui::menu_bar::{self, MenuAction, MenuState};
 use crate::gui::options_dialog::{default_value, OptionsAction, OptionsDialog};
@@ -369,6 +371,61 @@ enum AppEvent {
         generation: u64,
         outcome: Result<TournamentBook, String>,
     },
+    /// A database file was opened and its counts read.
+    DatabaseOpened {
+        request: u64,
+        outcome: Result<(DatabaseInfo, DbStats), String>,
+    },
+    /// One page of the database table arrived. `page_index` is zero-based;
+    /// `append` is set when scrolling asked for the next page.
+    DatabasePage {
+        request: u64,
+        page_index: usize,
+        append: bool,
+        outcome: Result<crate::database::GamePage, String>,
+    },
+    /// The matching-game count for the current filter arrived.
+    DatabaseCount { request: u64, total: u64 },
+    /// Player names that match what the user typed in the browser's Player
+    /// field, for its autocomplete popup.
+    DatabasePlayerSuggestions {
+        fragment: String,
+        players: Vec<String>,
+    },
+    /// A database game's PGN text is ready to put on the board.
+    DatabaseGame {
+        id: i64,
+        outcome: Result<String, String>,
+    },
+    /// A database job (import, export, cleanup) reported progress.
+    DatabaseProgress { progress: JobProgress },
+    /// A database job finished; `message` goes to the status line and the
+    /// dialog, `refresh` carries the new counts when a file changed.
+    DatabaseDone {
+        message: String,
+        error: bool,
+        refresh: Option<(DatabaseInfo, DbStats)>,
+    },
+    /// A database file picker returned.
+    DatabaseFilePicked {
+        purpose: DbPickPurpose,
+        outcome: Option<PathBuf>,
+    },
+}
+
+/// What a database file dialog was opened for.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DbPickPurpose {
+    /// The source PGN/Scid file of the new-database form.
+    Source,
+    /// A database or source file to open.
+    Open,
+    /// Where the new database file is written.
+    Target,
+    /// A PGN file to add to the open database.
+    AddGames,
+    /// The destination of an export.
+    ExportPgn,
 }
 
 /// Why opening a PGN file failed.
@@ -614,6 +671,11 @@ pub struct SiliconBoardApp {
     tournament_window_open: bool,
     /// Whether the small result pop-up should be shown.
     tournament_finished_popup: bool,
+    /// The database windows (new, overview, browser) and their state.
+    database: DatabaseUi,
+    /// Sequence number for database page requests, so a slow query cannot
+    /// replace a newer one.
+    database_request: u64,
 }
 
 impl SiliconBoardApp {
@@ -748,6 +810,8 @@ impl SiliconBoardApp {
             pgn_browser_list_open: false,
             tournament_window_open: false,
             tournament_finished_popup: false,
+            database: DatabaseUi::default(),
+            database_request: 0,
         }
     }
 
@@ -1304,6 +1368,108 @@ impl SiliconBoardApp {
                 } => {
                     self.handle_tournament_book_loaded(generation, outcome);
                 }
+                AppEvent::DatabaseOpened { request, outcome } => {
+                    if request != self.database_request {
+                        continue;
+                    }
+                    match outcome {
+                        Ok((info, stats)) => {
+                            self.database.show_loaded(info.clone(), stats);
+                            self.set_status(
+                                StatusLevel::Info,
+                                format!("{} · {} games", info.title, stats.games),
+                            );
+                            self.refresh_database_page();
+                        }
+                        Err(err) => {
+                            self.database.message = Some((true, err.clone()));
+                            self.set_status(StatusLevel::Error, err);
+                        }
+                    }
+                }
+                AppEvent::DatabasePage {
+                    request,
+                    page_index,
+                    append,
+                    outcome,
+                } => {
+                    self.database.loading = false;
+                    if request != self.database_request {
+                        continue;
+                    }
+                    match outcome {
+                        Ok(page) => {
+                            self.database.has_more = page.has_more;
+                            if append {
+                                self.database.rows.extend(page.rows);
+                            } else {
+                                self.database.rows = page.rows;
+                            }
+                            self.database.pages_loaded = page_index + 1;
+                        }
+                        Err(err) => {
+                            self.database.rows.clear();
+                            self.database.message = Some((true, err.clone()));
+                            self.set_status(StatusLevel::Error, err);
+                        }
+                    }
+                }
+                AppEvent::DatabaseCount { request, total } => {
+                    if request == self.database_request {
+                        self.database.total = Some(total);
+                    }
+                }
+                AppEvent::DatabasePlayerSuggestions { fragment, players } => {
+                    // Ignore a slow answer for a prefix the user has already
+                    // typed past: the popup belongs to the current text only.
+                    if self.database.form.player.trim() == fragment.trim() {
+                        self.database.suggestions_for = fragment;
+                        self.database.player_suggestions = players;
+                    }
+                }
+                AppEvent::DatabaseGame { id, outcome } => match outcome {
+                    Ok(text) => self.load_database_game(id, &text),
+                    Err(err) => {
+                        self.database.message = Some((true, err.clone()));
+                        self.set_status(StatusLevel::Error, err);
+                    }
+                },
+                AppEvent::DatabaseProgress { progress } => {
+                    if let Some(job) = self.database.job.as_mut() {
+                        job.progress = progress;
+                    }
+                }
+                AppEvent::DatabaseDone {
+                    message,
+                    error,
+                    refresh,
+                } => {
+                    self.database.job = None;
+                    self.database.message = Some((error, message.clone()));
+                    self.set_status(
+                        if error {
+                            StatusLevel::Error
+                        } else {
+                            StatusLevel::Info
+                        },
+                        message,
+                    );
+                    if let Some((info, stats)) = refresh {
+                        let path = info.path.clone();
+                        self.database.show_loaded(info, stats);
+                        // Keep the overview on screen after a write job, but
+                        // reload the browser rows so a cleanup shows at once.
+                        self.database.screen = DbScreen::Overview;
+                        self.refresh_database_page();
+                        self.set_status(
+                            StatusLevel::Info,
+                            format!("Database updated: {}", path.display()),
+                        );
+                    }
+                }
+                AppEvent::DatabaseFilePicked { purpose, outcome } => {
+                    self.handle_database_file_picked(purpose, outcome);
+                }
             }
         }
         if received {
@@ -1522,6 +1688,19 @@ impl SiliconBoardApp {
             MenuAction::ToggleFigurinesMoveList => self.toggle_figurines(false),
             MenuAction::ToggleFigurinesEval => self.toggle_figurines(true),
             MenuAction::ToggleAnalysisArrows => self.toggle_analysis_arrows(),
+            MenuAction::NewDatabase => {
+                self.database = DatabaseUi::default();
+                self.database.screen = DbScreen::New;
+                self.database.visible = true;
+            }
+            MenuAction::OpenDatabase => self.pick_database_file(DbPickPurpose::Open),
+            MenuAction::ShowDatabase => {
+                self.database.visible = true;
+                if self.database.info.is_some() {
+                    self.database.screen = DbScreen::Overview;
+                }
+            }
+            MenuAction::CloseDatabase => self.database = DatabaseUi::default(),
             MenuAction::OpenTournament => self.open_tournament_dialog(),
             MenuAction::StopTournament => self.stop_tournament(),
             MenuAction::ShowTournament => {
@@ -3348,6 +3527,696 @@ impl SiliconBoardApp {
         });
     }
 
+    // ── Database ───────────────────────────────────────────────────────────
+
+    /// Ask for a database or source file and open it.
+    fn pick_database_file(&mut self, purpose: DbPickPurpose) {
+        let tx = self.events_tx.clone();
+        let name = self.database.new_name.clone();
+        self.spawn(async move {
+            let mut dialog = rfd::AsyncFileDialog::new();
+            dialog = match purpose {
+                DbPickPurpose::Source | DbPickPurpose::AddGames => dialog
+                    .add_filter("PGN", &["pgn"])
+                    .add_filter("Scid", &["si4", "si5"]),
+                DbPickPurpose::Target => dialog
+                    .add_filter("SiliconBoard database", &["sbd"])
+                    .set_directory(crate::database::default_database_dir()),
+                DbPickPurpose::Open => dialog
+                    .add_filter("SiliconBoard database", &["sbd"])
+                    .add_filter("PGN", &["pgn"])
+                    .add_filter("Scid", &["si4", "si5"]),
+                DbPickPurpose::ExportPgn => dialog.add_filter("PGN", &["pgn"]),
+            };
+            let outcome = if purpose == DbPickPurpose::ExportPgn {
+                dialog
+                    .set_file_name("database.pgn")
+                    .save_file()
+                    .await
+                    .map(|handle| handle.path().to_path_buf())
+            } else if purpose == DbPickPurpose::Target {
+                let stem = crate::gui::database_ui::sanitize_stem(&name);
+                let file = if stem.is_empty() {
+                    "database.sbd".to_string()
+                } else {
+                    format!("{stem}.sbd")
+                };
+                dialog
+                    .set_file_name(file)
+                    .save_file()
+                    .await
+                    .map(|handle| handle.path().to_path_buf())
+            } else {
+                dialog
+                    .pick_file()
+                    .await
+                    .map(|handle| handle.path().to_path_buf())
+            };
+            tx.send(AppEvent::DatabaseFilePicked { purpose, outcome });
+        });
+    }
+
+    /// React to a file picker that came back.
+    fn handle_database_file_picked(&mut self, purpose: DbPickPurpose, outcome: Option<PathBuf>) {
+        let Some(path) = outcome else {
+            return;
+        };
+        match purpose {
+            DbPickPurpose::Source => self.database.prefill(path),
+            DbPickPurpose::Target => {
+                // Keep the extension the database needs, whatever the user typed.
+                let path = if path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("sbd"))
+                {
+                    path
+                } else {
+                    path.with_extension("sbd")
+                };
+                self.database.new_target = Some(path);
+                self.database.target_edited = true;
+            }
+            DbPickPurpose::Open => self.open_database_path(path),
+            DbPickPurpose::AddGames => self.database_add_games(path),
+            DbPickPurpose::ExportPgn => self.database_export_pgn(path),
+        }
+    }
+
+    /// Open a database, or offer to import a PGN/Scid file as a new one.
+    fn open_database_path(&mut self, path: PathBuf) {
+        let scid = crate::database::scid::detect(&path);
+        let is_sbd = path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("sbd"));
+        if !is_sbd {
+            // A source file becomes a database through the new-database form,
+            // so the user names it and sees the import options.
+            self.database.prefill(path.clone());
+            if let Some(format) = scid {
+                self.database.new_description =
+                    format!("{} · converted from {}", format.label(), path.display());
+            }
+            return;
+        }
+        self.database_request += 1;
+        let request = self.database_request;
+        let tx = self.events_tx.clone();
+        self.spawn(async move {
+            let outcome = tokio::task::spawn_blocking(move || {
+                let info = database::open(&path)?;
+                let stats = database::stats(&path)?;
+                Ok::<_, database::DbError>((info, stats))
+            })
+            .await;
+            let outcome = match outcome {
+                Ok(Ok(value)) => Ok(value),
+                Ok(Err(err)) => Err(err.to_string()),
+                Err(err) => Err(err.to_string()),
+            };
+            tx.send(AppEvent::DatabaseOpened { request, outcome });
+        });
+    }
+
+    /// Create a database from the new-database form and import the source.
+    fn create_database(
+        &mut self,
+        title: String,
+        description: String,
+        source: PathBuf,
+        target: PathBuf,
+    ) {
+        let options = ImportOptions {
+            validate_moves: self.database.validate_moves,
+            index_positions: self.database.index_positions,
+        };
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let name = source
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        self.database.job = Some(RunningJob {
+            title: format!("Importing {name}…"),
+            progress: JobProgress::default(),
+            cancel: cancel.clone(),
+        });
+        let tx = self.events_tx.clone();
+        self.spawn(async move {
+            let progress_tx = tx.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                let mut progress = |progress: JobProgress| {
+                    progress_tx.send(AppEvent::DatabaseProgress { progress });
+                };
+                database::create(&target, &title, &description)?;
+                let summary =
+                    database::import_file(&target, &source, &options, &mut progress, &cancel)?;
+                let info = database::open(&target)?;
+                let stats = database::stats(&target)?;
+                Ok::<_, database::DbError>((info, stats, summary))
+            })
+            .await;
+            let event = match result {
+                Ok(Ok((info, stats, summary))) => AppEvent::DatabaseDone {
+                    message: import_message(&summary),
+                    error: false,
+                    refresh: Some((info, stats)),
+                },
+                Ok(Err(err)) => AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                },
+                Err(err) => AppEvent::DatabaseDone {
+                    message: format!("the import task failed: {err}"),
+                    error: true,
+                    refresh: None,
+                },
+            };
+            tx.send(event);
+        });
+    }
+
+    /// Reload the table from its first page and start the count for the
+    /// current filter.
+    fn refresh_database_page(&mut self) {
+        self.database.total = None;
+        self.refresh_database_page_from(0);
+    }
+
+    /// Show the table from `start_page` onwards. The old rows stay on screen
+    /// until the new page arrives, so applying a filter does not blank (and
+    /// thereby resize) the window.
+    fn refresh_database_page_from(&mut self, start_page: usize) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        self.database.base_page = start_page;
+        self.database.visible_page = start_page + 1;
+        self.database.pages_loaded = start_page;
+        self.database.has_more = false;
+        self.database_request += 1;
+        self.database.loading = true;
+        let request = self.database_request;
+        self.request_database_page(request, info.clone(), start_page, false);
+
+        let filter = self.database.applied.clone();
+        let tx = self.events_tx.clone();
+        let path = info.path;
+        self.spawn(async move {
+            let total = tokio::task::spawn_blocking(move || database::count(&path, &filter)).await;
+            if let Ok(Ok(total)) = total {
+                tx.send(AppEvent::DatabaseCount { request, total });
+            }
+        });
+    }
+
+    /// Append the next page while the user keeps scrolling.
+    fn load_more_database_page(&mut self) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        if self.database.loading || !self.database.has_more {
+            return;
+        }
+        self.database.loading = true;
+        let request = self.database_request;
+        let page = self.database.pages_loaded;
+        self.request_database_page(request, info, page, true);
+    }
+
+    /// Look up player names for the browser's autocomplete popup. The query
+    /// runs off the UI thread; the answer carries the typed fragment so a slow
+    /// reply for an older prefix can be ignored.
+    fn request_database_player_suggestions(&mut self, fragment: String) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        let answer_fragment = fragment.clone();
+        let tx = self.events_tx.clone();
+        let path = info.path;
+        self.spawn(async move {
+            let outcome = tokio::task::spawn_blocking(move || {
+                database::player_suggestions(&path, &fragment, 12)
+            })
+            .await;
+            match outcome {
+                Ok(Ok(players)) => {
+                    tx.send(AppEvent::DatabasePlayerSuggestions {
+                        fragment: answer_fragment,
+                        players,
+                    });
+                }
+                Ok(Err(err)) => log::warn!("player suggestions failed: {err}"),
+                Err(err) => log::warn!("player suggestion task failed: {err}"),
+            }
+        });
+    }
+
+    /// Spawn one page query. `append` distinguishes infinite scrolling from a
+    /// new search.
+    fn request_database_page(
+        &mut self,
+        request: u64,
+        info: DatabaseInfo,
+        page_index: usize,
+        append: bool,
+    ) {
+        let filter = self.database.applied.clone();
+        let sort = self.database.sort;
+        let direction = self.database.sort_dir;
+        let page_size = self.database.page_size;
+        let tx = self.events_tx.clone();
+        self.spawn(async move {
+            let path = info.path;
+            let outcome = tokio::task::spawn_blocking(move || {
+                database::page(&path, &filter, sort, direction, page_index, page_size)
+            })
+            .await;
+            let outcome = match outcome {
+                Ok(Ok(page)) => Ok(page),
+                Ok(Err(err)) => Err(err.to_string()),
+                Err(err) => Err(err.to_string()),
+            };
+            tx.send(AppEvent::DatabasePage {
+                request,
+                page_index,
+                append,
+                outcome,
+            });
+        });
+    }
+
+    /// Put a database game on the board and close the database windows.
+    fn load_database_game(&mut self, id: i64, text: &str) {
+        match pgn::parse_pgn_with_report(text) {
+            Ok(import) => {
+                let name = self
+                    .database
+                    .info
+                    .as_ref()
+                    .map_or_else(|| "database".to_string(), |info| info.title.clone());
+                self.load_pgn_game(&name, import, None);
+                // "Everything else is closed": the file browser from a PGN
+                // that happened to be open makes no sense beside a database
+                // game, so it goes with the database windows.
+                self.clear_pgn_browser();
+                self.database.selected = Some(id);
+                self.database.visible = false;
+                // A game found through a Position search opens at that
+                // position, not at move one.
+                if let Some(key) = self.database.applied.position {
+                    if let Some(ply) = self.game.goto_position_key(key) {
+                        self.set_status(
+                            StatusLevel::Info,
+                            format!(
+                                "{name} — showing the searched position after move {}.",
+                                ply.div_ceil(2)
+                            ),
+                        );
+                    }
+                }
+            }
+            Err(err) => {
+                let message = format!("Game {id} cannot be read: {err}");
+                self.database.message = Some((true, message.clone()));
+                self.set_status(StatusLevel::Error, message);
+            }
+        }
+    }
+
+    /// Run a write job (cleanup, add games, export) with a progress strip.
+    fn run_database_job(&mut self, title: &str) {
+        self.database.job = Some(RunningJob {
+            title: title.to_string(),
+            progress: JobProgress::default(),
+            cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        });
+    }
+
+    /// Delete formatting-only duplicates.
+    fn database_remove_duplicates(&mut self) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        self.run_database_job("Removing duplicates…");
+        let tx = self.events_tx.clone();
+        let path = info.path.clone();
+        self.spawn(async move {
+            let removed =
+                tokio::task::spawn_blocking(move || database::remove_duplicates(&path)).await;
+            match removed {
+                Ok(Ok(0)) => {
+                    tx.send(AppEvent::DatabaseDone {
+                        message: "No duplicates found.".to_string(),
+                        error: false,
+                        refresh: None,
+                    });
+                }
+                Ok(Ok(count)) => {
+                    let message = format!("Removed {count} duplicate game(s).");
+                    Self::database_refresh_event(&tx, info.path.clone(), message);
+                }
+                Ok(Err(err)) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+                Err(err) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+            }
+        });
+    }
+
+    /// Delete games without moves.
+    fn database_remove_empty(&mut self) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        self.run_database_job("Removing empty games…");
+        let tx = self.events_tx.clone();
+        let path = info.path.clone();
+        self.spawn(async move {
+            let removed =
+                tokio::task::spawn_blocking(move || database::remove_empty_games(&path)).await;
+            match removed {
+                Ok(Ok(0)) => tx.send(AppEvent::DatabaseDone {
+                    message: "No empty games found.".to_string(),
+                    error: false,
+                    refresh: None,
+                }),
+                Ok(Ok(count)) => {
+                    let message = format!("Removed {count} empty game(s).");
+                    Self::database_refresh_event(&tx, info.path.clone(), message);
+                }
+                Ok(Err(err)) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+                Err(err) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+            }
+        });
+    }
+
+    /// Import another PGN into the open database.
+    fn database_add_games(&mut self, source: PathBuf) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        let options = ImportOptions {
+            validate_moves: self.database.validate_moves,
+            index_positions: self.database.index_positions,
+        };
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.database.job = Some(RunningJob {
+            title: "Adding games…".to_string(),
+            progress: JobProgress::default(),
+            cancel: cancel.clone(),
+        });
+        let tx = self.events_tx.clone();
+        let path = info.path.clone();
+        let db_path = path.clone();
+        self.spawn(async move {
+            let progress_tx = tx.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                let mut progress = |progress: JobProgress| {
+                    progress_tx.send(AppEvent::DatabaseProgress { progress });
+                };
+                database::import_file(&db_path, &source, &options, &mut progress, &cancel)
+            })
+            .await;
+            match result {
+                Ok(Ok(summary)) => {
+                    Self::database_refresh_event(&tx, path, import_message(&summary));
+                }
+                Ok(Err(err)) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+                Err(err) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+            }
+        });
+    }
+
+    /// Export the games matching the current filter.
+    fn database_export_pgn(&mut self, target: PathBuf) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        let filter = self.database.applied.clone();
+        let sort = self.database.sort;
+        let direction = self.database.sort_dir;
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.database.job = Some(RunningJob {
+            title: "Exporting games…".to_string(),
+            progress: JobProgress::default(),
+            cancel: cancel.clone(),
+        });
+        let tx = self.events_tx.clone();
+        let path = info.path.clone();
+        let db_path = path.clone();
+        let target_text = target.display().to_string();
+        self.spawn(async move {
+            let progress_tx = tx.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                let mut progress = |games: u64| {
+                    progress_tx.send(AppEvent::DatabaseProgress {
+                        progress: JobProgress {
+                            games,
+                            total_games: None,
+                            bytes: 0,
+                            total_bytes: 0,
+                        },
+                    });
+                };
+                database::export_pgn(
+                    &db_path,
+                    &filter,
+                    sort,
+                    direction,
+                    &target,
+                    &mut progress,
+                    &cancel,
+                )
+            })
+            .await;
+            match result {
+                Ok(Ok(count)) => {
+                    let message = format!("Exported {count} games to {target_text}");
+                    Self::database_refresh_event(&tx, info.path.clone(), message);
+                }
+                Ok(Err(err)) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+                Err(err) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+            }
+        });
+    }
+
+    /// Show the open database's file in Finder.
+    fn reveal_database_file(&mut self) {
+        let Some(info) = self.database.info.as_ref() else {
+            return;
+        };
+        let path = info.path.clone();
+        if let Err(err) = std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+        {
+            self.set_status(StatusLevel::Error, format!("Could not open Finder: {err}"));
+        }
+    }
+
+    /// Delete the database file and forget the session.
+    fn delete_database_file(&mut self) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        match database::delete(&info.path) {
+            Ok(()) => {
+                self.database = DatabaseUi::default();
+                self.set_status(
+                    StatusLevel::Info,
+                    format!("Deleted {}", info.path.display()),
+                );
+            }
+            Err(err) => {
+                self.database.message = Some((true, err.to_string()));
+                self.set_status(StatusLevel::Error, err.to_string());
+            }
+        }
+    }
+
+    /// Re-index every position of every game in the open database.
+    fn rebuild_position_index(&mut self) {
+        let Some(info) = self.database.info.clone() else {
+            return;
+        };
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.database.job = Some(RunningJob {
+            title: "Indexing positions…".to_string(),
+            progress: JobProgress::default(),
+            cancel: cancel.clone(),
+        });
+        let tx = self.events_tx.clone();
+        let path = info.path.clone();
+        self.spawn(async move {
+            let progress_tx = tx.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                let mut progress = |games: u64, total: u64| {
+                    progress_tx.send(AppEvent::DatabaseProgress {
+                        progress: JobProgress {
+                            games,
+                            total_games: Some(total),
+                            bytes: 0,
+                            total_bytes: 0,
+                        },
+                    });
+                };
+                database::rebuild_position_index(&path, &mut progress, &cancel)
+            })
+            .await;
+            match result {
+                Ok(Ok(count)) => {
+                    Self::database_refresh_event(
+                        &tx,
+                        info.path.clone(),
+                        format!("Position index rebuilt for {count} games."),
+                    );
+                }
+                Ok(Err(err)) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+                Err(err) => tx.send(AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                }),
+            }
+        });
+    }
+
+    /// Reload the counts in the background and report `message` with them.
+    fn database_refresh_event(tx: &EventSender, path: PathBuf, message: String) {
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let refresh = tokio::task::spawn_blocking(move || {
+                let info = database::open(&path)?;
+                let stats = database::stats(&path)?;
+                Ok::<_, database::DbError>((info, stats))
+            })
+            .await;
+            let event = match refresh {
+                Ok(Ok(value)) => AppEvent::DatabaseDone {
+                    message,
+                    error: false,
+                    refresh: Some(value),
+                },
+                Ok(Err(err)) => AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                },
+                Err(err) => AppEvent::DatabaseDone {
+                    message: err.to_string(),
+                    error: true,
+                    refresh: None,
+                },
+            };
+            tx.send(event);
+        });
+    }
+
+    /// Act on what the database windows asked for.
+    fn perform_database_action(&mut self, action: DbAction) {
+        match action {
+            DbAction::None => {}
+            DbAction::Close => self.database.visible = false,
+            DbAction::PickSource => self.pick_database_file(DbPickPurpose::Source),
+            DbAction::PickTarget => self.pick_database_file(DbPickPurpose::Target),
+            DbAction::Create {
+                title,
+                description,
+                source,
+                target,
+            } => self.create_database(title, description, source, target),
+            DbAction::Explore => {
+                self.database.screen = DbScreen::Browser;
+                self.refresh_database_page();
+            }
+            DbAction::ExploreFilter => {
+                self.database.screen = DbScreen::Browser;
+                self.refresh_database_page();
+            }
+            DbAction::SuggestPlayers(fragment) => {
+                self.request_database_player_suggestions(fragment);
+            }
+            DbAction::RemoveDuplicates => self.database_remove_duplicates(),
+            DbAction::RemoveEmptyGames => self.database_remove_empty(),
+            DbAction::AddGames => self.pick_database_file(DbPickPurpose::AddGames),
+            DbAction::ExportPgn => self.pick_database_file(DbPickPurpose::ExportPgn),
+            DbAction::LoadMore => self.load_more_database_page(),
+            DbAction::Page(page) => self.refresh_database_page_from(page),
+            DbAction::RevealInFinder => self.reveal_database_file(),
+            DbAction::DeleteDatabase => self.delete_database_file(),
+            DbAction::RebuildPositions => self.rebuild_position_index(),
+            DbAction::Sort(key) => {
+                if self.database.sort == key {
+                    self.database.sort_dir = match self.database.sort_dir {
+                        crate::database::SortDir::Asc => crate::database::SortDir::Desc,
+                        crate::database::SortDir::Desc => crate::database::SortDir::Asc,
+                    };
+                } else {
+                    self.database.sort = key;
+                    self.database.sort_dir = crate::database::SortDir::Desc;
+                }
+                self.refresh_database_page();
+            }
+            DbAction::LoadGame(id) => {
+                let Some(info) = self.database.info.clone() else {
+                    return;
+                };
+                let tx = self.events_tx.clone();
+                self.spawn(async move {
+                    let outcome =
+                        tokio::task::spawn_blocking(move || database::load_game(&info.path, id))
+                            .await;
+                    let outcome = match outcome {
+                        Ok(Ok(text)) => Ok(text),
+                        Ok(Err(err)) => Err(err.to_string()),
+                        Err(err) => Err(err.to_string()),
+                    };
+                    tx.send(AppEvent::DatabaseGame { id, outcome });
+                });
+            }
+            DbAction::CancelJob => {
+                if let Some(job) = self.database.job.as_ref() {
+                    job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                self.set_status(StatusLevel::Warning, "Cancelling…".to_string());
+            }
+        }
+    }
+
     /// Whether the slot holds an engine that has not exited.
     fn engine_live(&self, slot: usize) -> bool {
         self.engines[slot]
@@ -4378,6 +5247,7 @@ impl eframe::App for SiliconBoardApp {
                 .is_some_and(TournamentSession::active),
             tournament_has_run: self.tournament.is_some(),
             pgn_games_available: self.pgn_collection.is_some(),
+            database_loaded: self.database.info.is_some(),
         };
         let human_to_move = if self
             .tournament
@@ -4626,6 +5496,14 @@ impl eframe::App for SiliconBoardApp {
             if closed || self.tournament.is_none() {
                 self.tournament_finished_popup = false;
             }
+        }
+
+        // The database windows sit above the board; a double-clicked game is
+        // loaded by the action they return, then they close themselves.
+        let board_fen = self.game.fen();
+        let db_action = self.database.show(&ctx, &board_fen);
+        if !matches!(db_action, DbAction::None) {
+            self.perform_database_action(db_action);
         }
 
         let mut board_action = BoardAction::None;
@@ -6698,4 +7576,23 @@ mod game_flow_tests {
         }
         app.perform(MenuAction::StopAnalysis, &ctx);
     }
+}
+
+/// The status line for a finished import: what was stored and what was not.
+fn import_message(summary: &crate::database::ImportSummary) -> String {
+    let mut text = if summary.cancelled {
+        format!("Import cancelled — {} games kept", summary.imported)
+    } else {
+        format!("Imported {} games", summary.imported)
+    };
+    if summary.duplicates > 0 {
+        text.push_str(&format!(", {} already present", summary.duplicates));
+    }
+    if summary.skipped > 0 {
+        text.push_str(&format!(", {} skipped", summary.skipped));
+    }
+    if !summary.reasons.is_empty() {
+        text.push_str(&format!(" ({})", summary.reasons.join("; ")));
+    }
+    text
 }

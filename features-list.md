@@ -48,6 +48,18 @@ the bottom — with a clean dark theme.
   colours, resign and draw adjudication, optional EPD/PolyGlot opening
   books, and one PGN with every game.
 
+## Chess databases
+
+- **Create a database** from a PGN file, or open an existing `.sbd` file.
+  Scid `.si4`/`.si5` collections can be converted on import.
+- **Browse and filter** by player, rating, event, result, year and position;
+  sort any column and scroll through the games. Double-click a game to load it
+  on the board.
+- **Housekeeping:** remove duplicates or empty games, add more PGN files,
+  rebuild the position index and export the filtered selection back to PGN.
+- Games are stored verbatim, so comments, variations, NAGs and unknown tags
+  survive.
+
 ## Look and feel
 
 - Board themes and piece sets; figurine piece symbols (`♘f6`) in the move
@@ -57,5 +69,5 @@ the bottom — with a clean dark theme.
 
 ## Not (yet) included
 
-- Variation trees; PGN comments and variations; multi-PV engine lines;
+- Variation trees and PGN variations; multi-PV engine lines;
   in-GUI tablebase probing (the engines do the probing); other platforms.
